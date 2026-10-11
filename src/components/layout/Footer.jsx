@@ -8,7 +8,7 @@ export default function Footer() {
       <div className="relative mx-auto flex max-w-6xl flex-col items-center gap-4 px-4 py-10 text-center text-white">
         <LogoFull tone="onRed" className="w-44" />
         <p className="max-w-xs text-white/90">أكل بيتي متعمل بحب، بيتحضر طازة كل يوم.</p>
-        <p className="text-sm text-white/70">© {new Date().getFullYear()} {BRAND.name}</p>
+        <p className="text-sm font-semibold text-white">© {new Date().getFullYear()} {BRAND.name}</p>
       </div>
     </footer>
   );

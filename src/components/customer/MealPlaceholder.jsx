@@ -8,7 +8,7 @@ export default function MealPlaceholder({ className }) {
   return (
     <div
       className={cn(
-        "grid place-items-center bg-gradient-to-br from-brand-red to-brand-red-dark",
+        "grid place-items-center bg-brand-red",
         className
       )}
       aria-hidden

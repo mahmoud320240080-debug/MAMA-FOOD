@@ -5,6 +5,8 @@ import { MEAL_CATEGORIES } from "@/lib/constants";
 import { useCartStore } from "@/store/useCartStore";
 import MealPlaceholder from "./MealPlaceholder";
 import QuantityStepper from "./QuantityStepper";
+import { flyToCart } from "@/lib/flyToCart";
+import { haptic } from "@/lib/haptics";
 
 /**
  * كارت وجبة — بيعرض الصورة والاسم والوصف والسعر وزرار إضافة
@@ -24,7 +26,14 @@ export default function MealCard({ meal, date, onAddonsClick }) {
   );
   const totalQty = dayMealItems.reduce((s, it) => s + it.quantity, 0);
 
-  const handleQuickAdd = () => {
+  // "+" على الكارت: الوجبة بتطير للسلة + اهتزاز خفيف
+  const celebrateAdd = (el) => {
+    flyToCart(el, { image: meal.image });
+    haptic();
+  };
+
+  const handleQuickAdd = (e) => {
+    celebrateAdd(e.currentTarget);
     addItem({
       date,
       mealId: meal.id,
@@ -39,7 +48,7 @@ export default function MealCard({ meal, date, onAddonsClick }) {
   const catLabel = MEAL_CATEGORIES[meal.category] || meal.category;
 
   return (
-    <article className="group flex flex-col overflow-hidden rounded-3xl bg-white shadow-soft transition hover:shadow-pop">
+    <article className="group flex w-full flex-col overflow-hidden rounded-3xl bg-white shadow-soft transition hover:shadow-pop">
       {/* صورة */}
       <div className="relative aspect-[4/3] w-full overflow-hidden">
         {meal.image ? (
@@ -77,7 +86,7 @@ export default function MealCard({ meal, date, onAddonsClick }) {
               <button
                 type="button"
                 onClick={() => onAddonsClick(meal, date)}
-                className="min-h-[36px] rounded-full border-2 border-brand-red px-3 text-sm font-bold text-brand-red transition hover:bg-brand-red hover:text-white"
+                className="flex min-h-[44px] items-center rounded-full border-2 border-brand-red px-3.5 text-sm font-bold text-brand-red transition hover:bg-brand-red hover:text-white active:scale-95"
               >
                 إضافات
               </button>
@@ -85,9 +94,10 @@ export default function MealCard({ meal, date, onAddonsClick }) {
             {totalQty > 0 ? (
               <QuantityStepper
                 value={totalQty}
-                onChange={(q) => {
+                onChange={(q, e) => {
                   // لو فيه سطر واحد بس نغير كميته مباشرة
                   if (dayMealItems.length === 1) {
+                    if (q > totalQty && e) celebrateAdd(e.currentTarget);
                     updateQuantity(dayMealItems[0].id, q);
                   } else {
                     // لو أكتر من سطر (إضافات مختلفة) بنفتح الشيت
@@ -102,7 +112,7 @@ export default function MealCard({ meal, date, onAddonsClick }) {
                 onClick={handleQuickAdd}
                 aria-label={`أضف ${meal.name}`}
                 className={cn(
-                  "grid h-10 w-10 place-items-center rounded-full bg-brand-red text-white shadow-pop transition",
+                  "grid h-11 w-11 place-items-center rounded-full bg-brand-red text-white shadow-pop transition",
                   "hover:bg-brand-red-dark active:scale-95"
                 )}
               >

@@ -1,5 +1,4 @@
 import { Trash2 } from "lucide-react";
-import { cn } from "@/lib/cn";
 import { formatPrice } from "@/lib/format";
 import { lineTotal } from "@/lib/cart";
 import { useCartStore } from "@/store/useCartStore";
@@ -34,7 +33,7 @@ export default function CartLine({ item }) {
           type="button"
           onClick={() => removeItem(item.id)}
           aria-label={`حذف ${item.name}`}
-          className="grid h-8 w-8 place-items-center rounded-full text-ink-soft transition hover:bg-brand-red/10 hover:text-brand-red"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-ink-soft transition hover:bg-brand-red/10 hover:text-brand-red"
         >
           <Trash2 className="h-4 w-4" aria-hidden />
         </button>

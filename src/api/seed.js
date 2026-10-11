@@ -33,7 +33,8 @@ export const seedWeeklyMenu = () => ({
 });
 
 export const seedSettings = () => ({
-  orderCutoffHour: 22, // قفل كل يوم الساعة 10 مساءً اليوم اللي قبله
+  cutoffMode: "same_day", // كل يوم بيتقفل في نفس اليوم...
+  orderCutoffHour: 12, // ...الساعة 12 الضهر
   deliveryFee: 20,
 });
 

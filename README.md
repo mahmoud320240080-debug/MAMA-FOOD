@@ -1,36 +1,145 @@
-# MAMA FOOD — Frontend
+# MAMA FOOD
 
-React + Vite + Tailwind (RTL، Mobile-first). فرونت فقط، والبيانات حاليًا Mock على `localStorage`.
+موقع لطلب **الأكل البيتي**. الزبون بيطلب من غير ما يعمل حساب: يختار الأيام اللي عايز ياكل فيها، ووجبات وإضافات لكل يوم، ويأكد الطلب.
+صاحب الأكل عنده **لوحة تحكم** يدير منها المنيو والطلبات والإعدادات.
 
-## التشغيل
+> النسخة دي **فرونت فقط**: الداتا كلها وهمية (Mock) ومتخزنة في `localStorage` على المتصفح، عن طريق طبقة `src/api`.
+
+## المميزات
+
+**الزبون**
+- يشوف النهارده + 7 أيام جاية، ويختار أكتر من يوم في نفس الطلب.
+- لكل يوم: وجبات المنيو بتاعته، وإضافات لكل وجبة، وملاحظة وكمية، ونسخ نفس الاختيار لأيام تانية.
+- كل يوم عليه عداد لميعاد قفل الطلب، ولما الميعاد يخلص اليوم بيتقفل على طول.
+- سلة، وصفحة إتمام الطلب (الاسم، الموبايل، العنوان، ملاحظات)، والدفع كاش عند الاستلام.
+- زرار يبعت الطلب كرسالة جاهزة على واتساب صاحب الأكل، وصفحة نجاح فيها رقم الطلب.
+- PWA: يتسطب على الموبايل زي التطبيق.
+
+**الأدمن** (`/admin`)
+- **نظرة عامة**: أرقام الأسبوع (الأحد → السبت) ورسوم بيانية.
+- **الطلبات**: قايمة ببحث وفلاتر، وعرض Kanban بالسحب، وتغيير حالة طلبات كتير مرة واحدة، وتفاصيل كل طلب، وملخص التحضير لكل يوم.
+- **المنيو الأسبوعي**: قالب ثابت لكل يوم في الأسبوع.
+- **الوجبات** و**الإضافات**: إضافة وتعديل وحذف (والوجبة ليها صورة تترفع من الجهاز).
+- **الإعدادات**: ميعاد قفل الطلبات ورسوم التوصيل.
+- بحث سريع في أي حتة: `Ctrl+K` / `⌘K` أو زرار البحث.
+
+## التقنيات
+React 18 · Vite 5 · Tailwind CSS 3 (RTL) · React Router 6 · Zustand · TanStack Query · React Hook Form + Zod · Framer Motion · Recharts · dnd-kit · Lottie · vite-plugin-pwa.
+
+## المتطلبات والتشغيل
+- **Node.js 20.9 أو أحدث** (مكتوب في `engines` في `package.json`) و npm.
+
 ```bash
 npm install
-cp .env.example .env
-npm run dev
+cp .env.example .env   # اختياري: من غيره الموقع شغال بالداتا الوهمية
+npm run dev            # http://localhost:5173
 ```
-- الأدمن: `/admin/login` ← `admin@mamafood.com` / `admin123` (**تجريبي فقط**، الحماية الحقيقية على الباك).
 
-## الفكرة
-- الزبون يشوف **7 أيام تبدأ من بكره**، يختار الأيام، وبعدين وجبات وإضافات **كل يوم لوحده**.
-- الأدمن بيعدّل **قالب أسبوعي ثابت** (وجبات كل يوم من الأحد للسبت) بيتكرر كل أسبوع.
-- قفل الطلب لكل يوم: الساعة 10 م اليوم اللي قبله (قابل للتعديل من الإعدادات).
+| الأمر | بيعمل إيه |
+|---|---|
+| `npm run dev` | سيرفر التطوير (الـ service worker مقفول هنا) |
+| `npm run build` | نسخة البرودكشن في `dist/` |
+| `npm run preview` | يشغّل `dist/` محلياً على `http://localhost:4173` |
+| `npm run lint` / `npm run lint:fix` | ESLint (`eslint.config.js`) |
+| `npm run format` | Prettier (`.prettierrc`) — **بيعيد كتابة الملفات** |
+| `npm run test:e2e` | اختبارات e2e (تحت) |
 
-## الهيكل
+### اختبارات e2e
+```bash
+npm run test:e2e                 # الكل: فحص الكود + 6 سويتات (عادي + "تقليل الحركة")
+npm run test:e2e -- functional   # سيناريو الطلب من الزبون للأدمن
+npm run test:e2e -- customer     # صفحات الزبون
+npm run test:e2e -- admin        # صفحات الأدمن
+npm run test:e2e -- reduced      # نفس السويتات مع prefers-reduced-motion
+```
+- محتاج Chrome أو Edge متسطب (أو حدد المسار في `CHROME_PATH`).
+- السكريبت بيشغّل Vite بنفسه على بورت `5199` (غيّره بـ `E2E_PORT`)، والصور بتتحفظ في `e2e/shots/`.
+
+## هيكل المشروع
 ```
 src/
-  api/          طبقة الـ API (كل الكومبوننتس بتكلمها هي بس). USE_MOCK في config.js
-  components/   common (Button, Input, Modal, BottomSheet, ResponsiveTable...) + layout
-  pages/        customer + admin
-  routes/       AppRoutes + ProtectedRoute
-  store/        Zustand (auth, toast)
-  lib/          constants, dates, format
-  assets/       اللوجو والأيقونة والباترن (شفافة وجاهزة)
+  api/          طبقة الـ API: config.js (المتغيرات)، mockDb.js (localStorage)، seed.js (الداتا الأولية)، endpoint لكل حاجة
+  pages/        customer (الرئيسية، الطلب، النجاح، 404) + admin
+  components/   common (Button, Modal, BottomSheet...)، customer، admin، layout (Navbar, Footer)
+  layouts/      AdminLayout (السايدبار والهيدر)
+  routes/       AppRoutes و ProtectedRoute و pages.js (الصفحات اللي بتتحمّل lazy)
+  store/        Zustand: السلة، الأدمن، التوست، الواجهة
+  hooks/  lib/  hooks وأدوات (التواريخ وقفل الأيام، التنسيق، الألوان، البحث...)
+  assets/       اللوجو والأيقونات والباترن وأنيميشنات Lottie
+public/         أيقونات الـ PWA و _redirects
+e2e/            اختبارات Puppeteer
+scripts/        build-lotties.mjs (بيولّد أنيميشنات Lottie)
 ```
 
-## التحويل للباك الحقيقي
-في `.env`: `VITE_USE_MOCK=false` و `VITE_API_URL=...`. كل ملف في `src/api` فيه الـ endpoint المقابل.
-(`API_CONTRACT.md` الكامل في مرحلة التسليم.)
+## الداتا الوهمية (Mock)
+- كل الكومبوننتس بتكلم `src/api` بس. السويتش في `src/api/config.js`:
+  `USE_MOCK` = `true` إلا لو `VITE_USE_MOCK=false` في `.env`. ساعتها كل طلب بيروح للباك على `VITE_API_URL`.
+- في وضع الـ Mock الداتا في `localStorage`، فالزبون والأدمن لازم يكونوا على **نفس المتصفح** عشان الطلب يظهر عند الأدمن.
+
+| المفتاح | فيه إيه |
+|---|---|
+| `mamafood:db:orders` · `meals` · `addons` · `weeklyMenu` · `settings` | داتا الموقع (لو مش موجودة بتتعمل من `seed.js`) |
+| `mamafood:cart` | سلة الزبون وبياناته |
+| `mamafood:admin` · `mamafood:token` | دخول الأدمن وحالة السايدبار |
+| `mamafood:admin:ordersView` | عرض الطلبات (قايمة/Kanban) |
+
+**ترجيع الداتا للأول:** افتح DevTools ← Console على الموقع واكتب السطر ده، وبعدين اعمل Refresh:
+```js
+Object.keys(localStorage).filter((k) => k.startsWith("mamafood:")).forEach((k) => localStorage.removeItem(k));
+```
+(لو عايز تمسح الداتا بس وتفضل داخل كأدمن: استخدم `"mamafood:db:"` بدل `"mamafood:"`.)
+
+## دخول الأدمن التجريبي
+- الصفحة: `/admin/login`
+- الإيميل: `admin@mamafood.com` — الباسورد: `123456` (ودي المكتوبة في صفحة الدخول). الموك بيقبل كمان `admin123` (`DEMO_ADMIN` في `src/api/seed.js`).
+
+> **⚠️ البيانات دي وهمية وللديمو بس. الدخول هنا شكلي في المتصفح ومفيش أي حماية حقيقية، فمتستخدمهاش في أي نسخة حقيقية.**
+
+## قفل الطلبات والمنيو الأسبوعي
+- **ميعاد القفل** من **الإعدادات** في لوحة التحكم:
+  - **نفس اليوم** (الافتراضي، الساعة 12 الضهر): طلبات يوم الأحد مفتوحة لحد الأحد 12 الضهر.
+  - **اليوم اللي قبله**: طلبات يوم الأحد بتقفل يوم السبت في الساعة اللي تختارها.
+  - الصفحة بتعرض مثال بيتغير مع اختياراتك. الحساب كله في `getDayLockTime` / `isDayLocked` (`src/lib/dates.js`).
+  - لو يوم اتقفل والزبون لسه بيطلب، السلة وصفحة الطلب بيقولوله ويطلبوا منه يشيل وجبات اليوم ده.
+- **المنيو الأسبوعي** قالب ثابت: وجبات لكل يوم من الأحد للسبت، **بيتكرر كل أسبوع**. مفيش تعديل لتاريخ معين (لو عدّلت الأحد، كل يوم أحد بيتغير).
+- **رسوم التوصيل** من الإعدادات، وبتتضاف مرة واحدة على الطلب.
+
+## PWA
+- متظبط في `vite.config.js` (`vite-plugin-pwa`): manifest + service worker بيكاش واجهة الموقع وملفاته الثابتة بس، **مش الداتا**.
+- **مش شغال في `npm run dev`**. بيشتغل من نسخة البرودكشن بس، وعلى **HTTPS** (أو `localhost`).
+- التجربة على الكمبيوتر: `npm run build` ثم `npm run preview` وافتح `http://localhost:4173` ← DevTools ← Application (Manifest و Service Workers)، وهتلاقي أيقونة التسطيب في شريط العنوان.
+- على الموبايل: انشر الموقع (تحت) وافتحه بـ HTTPS ← "Add to Home Screen".
+- النسخة الجديدة بتتحمّل في الخلفية وتشتغل في الزيارة الجاية (`autoUpdate`).
+
+## النشر
+متغيرات `VITE_*` بتتحط في الكود **وقت الـ build**، فحطها في إعدادات الاستضافة (Environment variables) **قبل** ما تعمل build.
+
+**Netlify**
+1. **سحب وإفلات:** `npm run build` ثم اسحب فولدر `dist` على [app.netlify.com/drop](https://app.netlify.com/drop).
+2. **أو اربط الريبو:** Build command = `npm run build` و Publish directory = `dist` (موجودين في `netlify.toml`، ومعاهم Node 20).
+
+**Vercel**
+- اعمل Import للريبو. `vercel.json` فيه الإعدادات (Vite، `npm run build`، `dist`). أو من الطرفية: `npx vercel`.
+
+**ملحوظة الـ SPA:** الموقع صفحة واحدة، فأي مسار زي `/checkout` أو `/admin/orders` لازم يرجّع `index.html`، وإلا الـ Refresh هيطلع 404.
+ده متظبط في `public/_redirects` و `netlify.toml` (Netlify) و `vercel.json` (Vercel). الملفات الحقيقية (`sw.js`، `manifest.webmanifest`، `/assets/...`، الأيقونات) بتتقدّم زي ما هي ومش بتتحوّل لـ `index.html`، فالـ PWA شغالة عادي.
+
+## ملاحظات لمطوّر الباك (لو اتربط الموقع بسيرفر)
+الفرونت **مش مصدر للحقيقة**. كل ملف في `src/api` فيه الـ endpoint المقابل، والسيرفر لازم:
+- يعيد حساب الأسعار من الداتابيز: الـ subtotal (الوجبة + الإضافات × الكمية) ورسوم التوصيل من الإعدادات والإجمالي.
+- يرفض أي وجبة ليوم اتقفل، بنفس الإعدادات (`cutoffMode` و `orderCutoffHour`) ونفس القاعدة.
+- يتأكد من التوكن في كل مسارات `/admin`.
+- يسمح بالانتقالات دي بس في حالة الطلب: `new → preparing → delivering → done`، و`cancelled` من أي حالة قبل `done` (`nextOrderStatuses` في `src/lib/constants.js`).
+- التواريخ والقفل دلوقتي بتوقيت **جهاز الزبون**، فالسيرفر لازم يطبّقهم بتوقيت القاهرة `Africa/Cairo`.
+
+## حدود معروفة
+- داتا الـ Mock جوه المتصفح بس: مش بتتنقل بين الأجهزة، وبتتمسح لو اتمسحت داتا المتصفح.
+- صور الوجبات بتتخزن جوه `localStorage`، ومساحته محدودة (حوالي 5MB). الأحسن صور صغيرة (الفورم بينبّه لو الصورة أكبر من 500KB). الوجبات في الأول من غير صور، والأدمن يقدر يرفع صور ويغيرها.
+- دخول الأدمن وحماية المسارات شكليين في المتصفح بس.
+- مفيش دفع أونلاين (كاش عند الاستلام). رسالة واتساب بتتفتح جاهزة، والزبون هو اللي يبعتها.
+- الموقع فاتح بس (مفيش Dark mode).
 
 ## الهوية
-أحمر `#ED1C24` · أصفر `#FFDE17` · بني `#2B1B17` · كريمي `#FFFBEA`.
-خطوط: Baloo Bhaijaan 2 (عناوين) + Cairo (نص). **ممنوع أصفر على أبيض/كريمي** (مش مقروء).
+أحمر `#ED1B24` · أصفر `#FFDE17` · بني `#2B1B17` · كريمي `#FFFBEA` (متعرّفين مرة واحدة في `src/lib/brandColors.js`).
+خطوط: Baloo Bhaijaan 2 (عناوين) + Cairo (نص). **ممنوع أصفر على أبيض/كريمي.**
+أنيميشنات Lottie أصلية ومتولدة بـ `node scripts/build-lotties.mjs` (التفاصيل والترخيص في [CREDITS.md](CREDITS.md)).

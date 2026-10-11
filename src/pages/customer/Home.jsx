@@ -1,33 +1,43 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { menuApi } from "@/api";
 import { LogoFull } from "@/components/common/Logo";
 import Button from "@/components/common/Button";
-import Skeleton from "@/components/common/Skeleton";
 import Modal from "@/components/common/Modal";
 import DayPicker from "@/components/customer/DayPicker";
 import DayAccordion from "@/components/customer/DayAccordion";
 import AddonsSheet from "@/components/customer/AddonsSheet";
-import CartDrawer from "@/components/customer/CartDrawer";
-import StickyCartBar from "@/components/customer/StickyCartBar";
+import HeroHats from "@/components/customer/HeroHats";
 import { useCartStore } from "@/store/useCartStore";
 import { itemsCount } from "@/lib/cart";
+import { haptic } from "@/lib/haptics";
+import { DAYS_SECTION_ID, scrollToSection } from "@/lib/scroll";
 
 /* ═══════════════ Hero ═══════════════ */
 function Hero() {
   return (
-    <section className="bg-chef-pattern px-4 py-10 md:py-16">
-      <div className="mx-auto max-w-3xl rounded-4xl bg-brand-red p-8 text-center text-white shadow-pop md:p-12">
-        <LogoFull tone="onRed" className="mx-auto w-56 md:w-72" />
-        <h1 className="mt-6 text-3xl font-extrabold leading-tight md:text-5xl">
-          أكل بيتي زي بتاع ماما
-        </h1>
-        <p className="mx-auto mt-3 max-w-md text-lg text-white/90">
-          اختار الأيام اللي عايز تطلب فيها، وبعدين وجباتك وإضافاتك لكل يوم.
-        </p>
-        <Button as="a" href="#days" variant="secondary" size="lg" className="mt-7">
-          اختار أيامك
-        </Button>
+    // طول الشاشة الظاهرة (hero-screen في index.css) والكارت في النص رأسياً
+    <section className="hero-screen flex flex-col justify-center bg-chef-pattern px-4 py-10 md:py-16">
+      <div className="relative isolate mx-auto w-full max-w-3xl overflow-hidden rounded-4xl bg-brand-red p-8 text-center text-white shadow-pop md:p-12">
+        <HeroHats />
+        <div className="relative">
+          <LogoFull tone="onRed" priority className="mx-auto w-56 md:w-72" />
+          <h1 className="mt-6 text-3xl font-extrabold leading-tight md:text-5xl">
+            أكل بيتي زي بتاع ماما
+          </h1>
+          <p className="mx-auto mt-3 max-w-md text-lg text-white/90">
+            اختار الأيام اللي عايز تطلب فيها، وبعدين وجباتك وإضافاتك لكل يوم.
+          </p>
+          <Button
+            variant="secondary"
+            size="xl"
+            onClick={() => scrollToSection(DAYS_SECTION_ID)}
+            className="mt-7"
+          >
+            اختار أيامك
+          </Button>
+        </div>
       </div>
     </section>
   );
@@ -38,6 +48,7 @@ export default function Home() {
   const { data: days, isLoading, isError, refetch } = useQuery({
     queryKey: ["upcoming"],
     queryFn: menuApi.getUpcoming,
+    staleTime: 0, // ميعاد القفل جاي من إعدادات الأدمن
   });
 
   const selectedDates = useCartStore((s) => s.selectedDates);
@@ -49,16 +60,23 @@ export default function Home() {
   const [openAccordion, setOpenAccordion] = useState(null);
   // شيت الإضافات
   const [addonsState, setAddonsState] = useState({ open: false, meal: null, date: null });
-  // درور السلة
-  const [cartOpen, setCartOpen] = useState(false);
   // مودال تأكيد حذف يوم
   const [removeConfirm, setRemoveConfirm] = useState(null);
 
-  // Prune invalid items on load
+  // جاي من زرار "اختار أيامك" في الناف بار من صفحة تانية (/#days)
+  const { hash } = useLocation();
   useEffect(() => {
-    if (days) pruneInvalid(days);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [days]);
+    if (hash === `#${DAYS_SECTION_ID}`) scrollToSection(DAYS_SECTION_ID);
+  }, [hash]);
+
+  // Prune invalid items once on load
+  const prunedRef = useRef(false);
+  useEffect(() => {
+    if (days && !prunedRef.current) {
+      pruneInvalid(days);
+      prunedRef.current = true;
+    }
+  }, [days, pruneInvalid]);
 
   // فتح أول يوم محدد بشكل افتراضي
   useEffect(() => {
@@ -80,6 +98,7 @@ export default function Home() {
       } else {
         toggleDate(date);
         setOpenAccordion(date);
+        haptic();
       }
     },
     [selectedDates, items, toggleDate]
@@ -110,9 +129,9 @@ export default function Home() {
     <>
       <Hero />
 
-      {/* ═══ اختار أيامك ═══ */}
-      <section id="days" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-10">
-        <h2 className="text-2xl font-extrabold md:text-3xl">اختار أيامك</h2>
+      {/* ═══ اختار أيامك ═══ (scroll-margin = ارتفاع الناف بار الثابت + مسافة، عشان العنوان ما يستخباش تحته) */}
+      <section id={DAYS_SECTION_ID} className="mx-auto max-w-6xl scroll-mt-[calc(4rem+var(--safe-top)+0.75rem)] px-4 py-10">
+        <h2 tabIndex={-1} className="text-2xl font-extrabold focus-visible:ring-0 focus-visible:ring-offset-0 md:text-3xl">اختار أيامك</h2>
         <p className="mb-5 mt-1 text-ink-soft">
           حدد الأيام اللي عايز تطلب فيها، وبعد كده اختار وجباتك لكل يوم.
         </p>
@@ -134,11 +153,11 @@ export default function Home() {
 
       {/* ═══ الأيام المحددة (أكورديونز) ═══ */}
       {selectedDays.length > 0 && (
-        <section className="mx-auto max-w-6xl px-4 pb-10">
+        <section className={`mx-auto max-w-6xl px-4 ${hasItems ? "pb-12 md:pb-28" : "pb-12"}`}>
           <h2 className="mb-4 text-xl font-extrabold md:text-2xl">
             وجبات الأيام المختارة
           </h2>
-          <div className={`space-y-3 ${hasItems ? "pb-24 md:pb-20" : ""}`}>
+          <div className="space-y-3">
             {selectedDays.map((day) => (
               <DayAccordion
                 key={day.date}
@@ -164,11 +183,6 @@ export default function Home() {
         days={days}
       />
 
-      {/* ═══ درور السلة ═══ */}
-      <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
-
-      {/* ═══ بار السلة اللاصق ═══ */}
-      <StickyCartBar onOpen={() => setCartOpen(true)} />
 
       {/* ═══ مودال تأكيد حذف يوم ═══ */}
       <Modal

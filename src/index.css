@@ -7,6 +7,8 @@
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
   }
+  /* فاتح دايماً: الإنبوتس والسكرول بار والـ date picker كمان */
+  :root { color-scheme: light; }
   html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
   html, body, #root { min-height: 100dvh; }
   body {
@@ -22,17 +24,47 @@
 }
 
 @layer components {
-  /* باترن قبعة الشيف من الهوية */
+  /* باترن قبعة الشيف: صورة SVG واحدة كبيرة (القبعات بس، خلفيتها شفافة) فوق الأحمر الموحد
+     => مفيش بلاطات ولا فواصل، والأحمر نفس درجة الناف بار بالظبط */
   .bg-chef-pattern {
-    background-color: theme("colors.brand.red");
-    background-image: url("./assets/pattern.jpg");
-    background-size: 360px auto;
+    background: theme("colors.brand.red") url("./assets/pattern.svg") center / cover no-repeat;
+  }
+  /* الهيرو: طول الشاشة الظاهرة ناقص الناف بار (والدوك تحت على الموبايل) => "اختار أيامك" تحت الطية */
+  .hero-screen {
+    min-height: calc(100svh - 4rem - var(--safe-top) - var(--dock-h, 0px));
+  }
+  /* موبايل بالعرض: الشاشة قصيرة، فارتفاع معقول بدل ما نجبر الهيرو يبقى أطول من المحتوى */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .hero-screen { min-height: 0; }
   }
   .pt-safe { padding-top: var(--safe-top); }
   .pb-safe { padding-bottom: var(--safe-bottom); }
   .scroll-snap-x { scroll-snap-type: x mandatory; scrollbar-width: none; }
   .scroll-snap-x::-webkit-scrollbar { display: none; }
   .scroll-snap-x > * { scroll-snap-align: start; }
+
+  /* زجاج (Glassmorphism) للدوك الكريمي: لون صلب افتراضياً، وشفاف + blur بس لو المتصفح بيدعم backdrop-filter.
+     الأحمر دايماً صلب (bg-brand-red) عشان كل الأحمر في الموقع يبقى درجة واحدة */
+  .glass-cream { background-color: theme("colors.cream.DEFAULT"); }
+
+  /* قبعات الشيف في الهيرو: طفو خفيف (transform بس) */
+  .hat-float {
+    transform: rotate(var(--hat-r, 0deg));
+    animation: hat-float var(--hat-d, 6s) ease-in-out var(--hat-delay, 0s) infinite;
+  }
+}
+
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .glass-cream {
+    background-color: rgb(255 251 234 / 0.82);
+    -webkit-backdrop-filter: saturate(1.4) blur(16px);
+    backdrop-filter: saturate(1.4) blur(16px);
+  }
+}
+
+@keyframes hat-float {
+  0%, 100% { transform: translateY(0) rotate(var(--hat-r, 0deg)); }
+  50% { transform: translateY(-8px) rotate(calc(var(--hat-r, 0deg) + 6deg)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -42,6 +74,7 @@
     transition-duration: .01ms !important;
     scroll-behavior: auto !important;
   }
+  .hat-float { animation: none; }
 }
 
 /* الطباعة (تيكت الطلب في الأدمن) */

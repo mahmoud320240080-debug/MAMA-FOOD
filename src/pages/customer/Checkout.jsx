@@ -1,25 +1,28 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { ordersApi, calcOrderTotal, menuApi, WHATSAPP_NUMBER } from "@/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ordersApi, menuApi } from "@/api";
 import { useCartStore } from "@/store/useCartStore";
 import { toast } from "@/store/useToastStore";
 import Button from "@/components/common/Button";
 import Input from "@/components/common/Input";
 import OrderSummary from "@/components/customer/OrderSummary";
+import LockedDaysModal from "@/components/customer/LockedDaysModal";
 import { PHONE_REGEX } from "@/lib/constants";
+import { formatDayLabel, getLockedDates } from "@/lib/dates";
 import { formatPrice } from "@/lib/format";
-import { buildWhatsAppUrl } from "@/lib/whatsapp";
+import { whatsappUrl } from "@/lib/whatsapp";
 import { cartSubtotal } from "@/lib/cart";
 import { MessageCircle } from "lucide-react";
+import { haptic } from "@/lib/haptics";
 
 const schema = z.object({
   name: z.string().min(2, "الاسم لازم يكون حرفين على الأقل"),
   phone: z.string().regex(PHONE_REGEX, "رقم الموبايل مش صح (مثال: 01012345678)"),
-  address: z.string().min(5, "العنوان لازم يكون 5 حروف على الأقل"),
+  address: z.string().min(3, "العنوان مطلوب"),
   notes: z.string().optional(),
 });
 
@@ -30,27 +33,29 @@ export default function Checkout() {
   const saveCustomer = useCartStore((s) => s.saveCustomer);
   const clearCart = useCartStore((s) => s.clearCart);
 
-  // لو السلة فاضية روح للرئيسية
+  // لو السلة فاضية روح للرئيسية (إلا لو السلة اتفضت لأن الطلب اتأكد => صفحة النجاح)
+  const orderPlaced = useRef(false);
   useEffect(() => {
-    if (items.length === 0) navigate("/", { replace: true });
+    if (items.length === 0 && !orderPlaced.current) navigate("/", { replace: true });
   }, [items.length, navigate]);
 
-  // جيب الإعدادات (رسوم التوصيل)
-  const { data: settings } = useQuery({
-    queryKey: ["settings"],
-    queryFn: menuApi.getSettings,
-  });
+  // جيب الإعدادات (رسوم التوصيل وميعاد القفل)
+  const queryClient = useQueryClient();
+  const settingsQuery = { queryKey: ["settings"], queryFn: menuApi.getSettings, staleTime: 0 }; // الأدمن ممكن يكون غيّرها
+  const { data: settings } = useQuery(settingsQuery);
   const deliveryFee = settings?.deliveryFee ?? 0;
 
-  // جيب الأيام الجاية للتحقق قبل الإرسال
-  const { data: upcomingDays } = useQuery({
-    queryKey: ["upcoming"],
-    queryFn: menuApi.getUpcoming,
-  });
+  // أيام في السلة اتقفلت: بنعرضها أول ما الصفحة تفتح، ونتحقق تاني لحظة التأكيد
+  const itemDates = items.map((it) => it.date);
+  const lockedDates = settings ? getLockedDates(itemDates, settings) : [];
+  const [lockedOpen, setLockedOpen] = useState(false);
+  const lockedOnLoad = lockedDates.length > 0;
+  useEffect(() => { if (lockedOnLoad) setLockedOpen(true); }, [lockedOnLoad]);
 
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(schema),
@@ -62,6 +67,8 @@ export default function Checkout() {
     },
   });
 
+  const formValues = watch();
+
   const mutation = useMutation({
     mutationFn: (data) =>
       ordersApi.create({
@@ -70,6 +77,8 @@ export default function Checkout() {
         deliveryFee,
       }),
     onSuccess: (order) => {
+      orderPlaced.current = true;
+      haptic([12, 60, 18]);
       saveCustomer({
         name: order.customer.name,
         phone: order.customer.phone,
@@ -82,31 +91,36 @@ export default function Checkout() {
     onError: (e) => toast.error(e.message || "حصلت مشكلة، حاول تاني"),
   });
 
-  const onSubmit = (data) => {
-    // تحقق إن كل الأيام لسه مفتوحة
-    if (upcomingDays) {
-      const itemDates = [...new Set(items.map((it) => it.date))];
-      const closedDates = itemDates.filter((d) => {
-        const day = upcomingDays.find((dd) => dd.date === d);
-        return !day || day.isClosed;
-      });
-      if (closedDates.length > 0) {
-        toast.error("بعض الأيام اتقفلت. ارجع للرئيسية وعدّل طلبك.");
+  const onSubmit = async (data) => {
+    // تحقق إن كل الأيام لسه مفتوحة قبل الإرسال مباشرة (بإعدادات جديدة من السيرفر والوقت الحالي)
+    try {
+      const latest = await queryClient.fetchQuery(settingsQuery);
+      const closed = getLockedDates(itemDates, latest);
+      if (closed.length > 0) {
+        toast.error(`الطلب اتقفل على ${closed.map(formatDayLabel).join("، ")}. شيل وجباته وكمّل.`);
+        setLockedOpen(true);
         return;
       }
+      mutation.mutate(data);
+    } catch {
+      toast.error("حصلت مشكلة أثناء التحقق، حاول تاني.");
     }
-    mutation.mutate(data);
   };
 
   // WhatsApp link
   const waUrl = useMemo(() => {
     if (items.length === 0) return "#";
-    return buildWhatsAppUrl(WHATSAPP_NUMBER, {
+    return whatsappUrl({
       items,
-      customer: { name: customer.name || "—", phone: customer.phone || "—", address: customer.address || "—", notes: customer.notes },
+      customer: {
+        name: formValues.name || customer.name || "—",
+        phone: formValues.phone || customer.phone || "—",
+        address: formValues.address || customer.address || "—",
+        notes: formValues.notes || customer.notes,
+      },
       deliveryFee,
     });
-  }, [items, customer, deliveryFee]);
+  }, [items, formValues.name, formValues.phone, formValues.address, formValues.notes, customer, deliveryFee]);
 
   const total = cartSubtotal(items) + deliveryFee;
 
@@ -179,7 +193,7 @@ export default function Checkout() {
               <span>{formatPrice(total)}</span>
             </div>
 
-            <Button type="submit" block size="lg" loading={mutation.isPending}>
+            <Button type="submit" block size="lg" loading={mutation.isPending} disabled={!settings}>
               أكّد الطلب
             </Button>
 
@@ -192,11 +206,13 @@ export default function Checkout() {
               block
             >
               <MessageCircle className="h-5 w-5" aria-hidden />
-              تواصل عن طريق واتساب
+              ابعت الطلب على واتساب
             </Button>
           </div>
         </form>
       </div>
+
+      <LockedDaysModal open={lockedOpen} dates={lockedDates} onClose={() => setLockedOpen(false)} />
     </div>
   );
 }

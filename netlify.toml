@@ -1,0 +1,15 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  # package.json "engines": Node >= 20.9 (workbox-build for the PWA needs Node 20+)
+  NODE_VERSION = "20"
+
+# SPA routing, same rule as public/_redirects: unknown paths (/checkout, /admin/orders/...) serve index.html.
+# Status 200 without `force` never shadows real files, so sw.js, manifest.webmanifest,
+# workbox-*.js, registerSW.js, /assets/* and the icons are served as-is.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

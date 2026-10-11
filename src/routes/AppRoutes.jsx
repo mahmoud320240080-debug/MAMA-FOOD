@@ -1,38 +1,38 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import CustomerLayout from "@/components/layout/CustomerLayout";
-import AdminLayout from "@/components/layout/AdminLayout";
 import ProtectedRoute from "./ProtectedRoute";
 import Home from "@/pages/customer/Home";
-import NotFound from "@/pages/customer/NotFound";
-import Skeleton from "@/components/common/Skeleton";
-
-const Login = lazy(() => import("@/pages/admin/Login"));
-const Orders = lazy(() => import("@/pages/admin/Orders"));
-const Menu = lazy(() => import("@/pages/admin/Menu"));
-const Meals = lazy(() => import("@/pages/admin/Meals"));
-const Addons = lazy(() => import("@/pages/admin/Addons"));
-
-const Fallback = () => <div className="space-y-3 p-6"><Skeleton className="h-10 w-1/2" /><Skeleton className="h-40" /></div>;
+import PageLoader from "@/components/common/PageLoader";
+import {
+  AdminLayout, Addons, Checkout, Dashboard, Login, Meals, Menu, NotFound, OrderDetails, OrderSuccess, Orders, Settings,
+} from "./pages";
 
 export default function AppRoutes() {
   return (
-    <Suspense fallback={<Fallback />}>
+    // لودر الشاشة كلها: لصفحة الدخول ولوحة التحكم أول مرة (صفحات الزبون ليها Suspense جوه الـ layout)
+    <Suspense fallback={<PageLoader className="min-h-dvh bg-cream" />}>
       <Routes>
         <Route element={<CustomerLayout />}>
           <Route path="/" element={<Home />} />
-          {/* المرحلة 1: /checkout و /order-success/:id */}
+          <Route path="/checkout" element={<Checkout />} />
+          <Route path="/order-success/:id" element={<OrderSuccess />} />
           <Route path="*" element={<NotFound />} />
         </Route>
 
         <Route path="/admin/login" element={<Login />} />
         <Route path="/admin" element={<ProtectedRoute />}>
           <Route element={<AdminLayout />}>
-            <Route index element={<Navigate to="orders" replace />} />
-            <Route path="orders" element={<Orders />} />
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard" element={<Dashboard />} />
             <Route path="menu" element={<Menu />} />
             <Route path="meals" element={<Meals />} />
             <Route path="addons" element={<Addons />} />
+            <Route path="orders" element={<Orders />} />
+            <Route path="orders/:id" element={<OrderDetails />} />
+            <Route path="settings" element={<Settings />} />
+            {/* مسار أدمن غلط => 404 جوه لوحة التحكم (بزرار يرجع للداشبورد) */}
+            <Route path="*" element={<NotFound />} />
           </Route>
         </Route>
       </Routes>

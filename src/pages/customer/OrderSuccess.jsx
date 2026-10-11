@@ -1,19 +1,18 @@
 import { useEffect, useRef, useMemo } from "react";
-import { Link, useParams, useNavigate } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ordersApi, WHATSAPP_NUMBER } from "@/api";
+import { ordersApi } from "@/api";
 import Button from "@/components/common/Button";
 import Skeleton from "@/components/common/Skeleton";
 import OrderSummary from "@/components/customer/OrderSummary";
 import { LogoIcon } from "@/components/common/Logo";
-import { buildWhatsAppUrl } from "@/lib/whatsapp";
-import { formatPrice } from "@/lib/format";
+import { whatsappUrl } from "@/lib/whatsapp";
 import { ORDER_STATUS } from "@/lib/constants";
 import { MessageCircle, PartyPopper } from "lucide-react";
+import { BRAND_COLORS } from "@/lib/brandColors";
 
 export default function OrderSuccess() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const confettiDone = useRef(false);
 
   const { data: order, isLoading, isError } = useQuery({
@@ -31,16 +30,16 @@ export default function OrderSuccess() {
     import("canvas-confetti").then((mod) => {
       const confetti = mod.default;
       // Red & Yellow confetti burst
-      const colors = ["#ED1C24", "#FFDE17", "#C4141B", "#FFF3A6"];
+      const colors = [BRAND_COLORS.red, BRAND_COLORS.yellow, BRAND_COLORS.redDark, BRAND_COLORS.yellowSoft];
       confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors });
       setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5 }, colors }), 300);
-    });
+    }).catch(() => { /* الكونفيتي ديكور بس — لو الملف ما اتحمّلش الصفحة كاملة عادي */ });
   }, [order]);
 
   // WhatsApp link
   const waUrl = useMemo(() => {
     if (!order) return "#";
-    return buildWhatsAppUrl(WHATSAPP_NUMBER, {
+    return whatsappUrl({
       items: order.items,
       customer: order.customer,
       deliveryFee: order.deliveryFee,
@@ -73,9 +72,12 @@ export default function OrderSuccess() {
 
   return (
     <div className="mx-auto max-w-lg px-4 py-10 text-center">
-      {/* أيقونة النجاح */}
-      <div className="mx-auto mb-6 grid h-24 w-24 place-items-center rounded-full bg-brand-red shadow-pop">
-        <PartyPopper className="h-12 w-12 text-brand-yellow" aria-hidden />
+      {/* أيقونة النجاح واللوجو */}
+      <div className="mx-auto mb-6 flex flex-col items-center gap-3">
+        <LogoIcon tone="onLight" className="w-20" />
+        <div className="grid h-20 w-20 place-items-center rounded-full bg-brand-red shadow-pop">
+          <PartyPopper className="h-10 w-10 text-brand-yellow" aria-hidden />
+        </div>
       </div>
 
       <h1 className="text-3xl font-extrabold">تم تأكيد طلبك! 🎉</h1>
@@ -111,7 +113,7 @@ export default function OrderSuccess() {
           block
         >
           <MessageCircle className="h-5 w-5" aria-hidden />
-          تواصل عن طريق واتساب
+          ابعت الطلب على واتساب
         </Button>
         <Button as={Link} to="/" variant="outline" block>
           اطلب تاني

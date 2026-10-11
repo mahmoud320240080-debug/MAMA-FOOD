@@ -13,7 +13,8 @@ const Input = forwardRef(function Input({ label, error, hint, as: Tag = "input",
         aria-invalid={!!error}
         aria-describedby={error ? `${inputId}-err` : undefined}
         className={cn(
-          "min-h-[48px] w-full rounded-2xl border-2 bg-white px-4 py-3 text-base transition placeholder:text-ink-soft/60",
+          "min-h-[48px] w-full rounded-2xl border-2 bg-white px-4 py-3 text-base text-ink transition placeholder:text-ink-soft/60",
+          "disabled:cursor-not-allowed disabled:bg-cream-dark disabled:text-ink-soft",
           "focus:border-brand-red focus:outline-none",
           error ? "border-brand-red" : "border-ink/10",
           Tag === "textarea" && "min-h-[96px] resize-y",
@@ -21,7 +22,7 @@ const Input = forwardRef(function Input({ label, error, hint, as: Tag = "input",
         {...props}
       />
       {error ? <p id={`${inputId}-err`} className="mt-1 text-sm font-medium text-brand-red">{error}</p>
-        : hint && <p className="mt-1 text-sm text-ink-soft">{hint}</p>}
+        : hint && <p className="mt-1 text-sm opacity-75">{hint}</p>}
     </div>
   );
 });

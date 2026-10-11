@@ -19,4 +19,6 @@ export const mealsApi = {
     USE_MOCK
       ? simulate(() => { db.write("meals", read().filter((m) => m.id !== id)); return { id }; })
       : http(`/admin/meals/${id}`, { method: "DELETE" }),
+  delete: (id) => mealsApi.remove(id),
 };
+

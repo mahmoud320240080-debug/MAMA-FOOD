@@ -37,16 +37,22 @@ export const useCartStore = create(
       setSelectedDates: (dates) => set({ selectedDates: [...dates].sort() }),
       removeDateItems: (date) =>
         set({ items: get().items.filter((it) => it.date !== date) }),
+      /** شيل يوم بالكامل (وجباته + اختياره) — لما اليوم يتقفل والزبون لسه بيطلب */
+      removeDay: (date) =>
+        set({
+          items: get().items.filter((it) => it.date !== date),
+          selectedDates: get().selectedDates.filter((d) => d !== date),
+        }),
 
       // — عناصر —
-      addItem: ({ date, mealId, name, price, addons = [], note = "" }) => {
+      addItem: ({ date, mealId, name, price, addons = [], note = "", quantity = 1 }) => {
         const lineId = generateLineId(date, mealId, addons, note);
         const items = get().items;
         const existing = items.find((it) => it.id === lineId);
         if (existing) {
-          set({ items: items.map((it) => (it.id === lineId ? { ...it, quantity: it.quantity + 1 } : it)) });
+          set({ items: items.map((it) => (it.id === lineId ? { ...it, quantity: it.quantity + quantity } : it)) });
         } else {
-          set({ items: [...items, { id: lineId, date, mealId, name, price, quantity: 1, addons, note }] });
+          set({ items: [...items, { id: lineId, date, mealId, name, price, quantity, addons, note }] });
         }
         // تأكد إن اليوم محدد
         const { selectedDates } = get();
@@ -67,14 +73,24 @@ export const useCartStore = create(
           _lastRemoved: item || null,
         });
         if (item) {
-          toast.info(`تم حذف ${item.name}`);
+          toast.info(`تم حذف ${item.name}`, {
+            ms: 5000,
+            action: {
+              label: "تراجع",
+              onClick: () => get().undoRemove(),
+            },
+          });
         }
       },
 
       undoRemove: () => {
         const item = get()._lastRemoved;
         if (!item) return;
-        set({ items: [...get().items, item], _lastRemoved: null });
+        const { items, selectedDates } = get();
+        const nextDates = selectedDates.includes(item.date)
+          ? selectedDates
+          : [...selectedDates, item.date].sort();
+        set({ items: [...items, item], selectedDates: nextDates, _lastRemoved: null });
         toast.success("تم إرجاع العنصر");
       },
 

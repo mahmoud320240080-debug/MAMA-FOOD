@@ -1,12 +1,15 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import BottomSheet from "@/components/common/BottomSheet";
 import Button from "@/components/common/Button";
 import Input from "@/components/common/Input";
 import QuantityStepper from "./QuantityStepper";
 import { formatPrice } from "@/lib/format";
-import { formatDayMonth } from "@/lib/dates";
+import { formatDayMonth, fromDateKey, withLam } from "@/lib/dates";
+import { DAY_KEYS, DAY_NAMES_AR } from "@/lib/constants";
 import { useCartStore } from "@/store/useCartStore";
 import { cn } from "@/lib/cn";
+import { flyToCart } from "@/lib/flyToCart";
+import { haptic } from "@/lib/haptics";
 
 /**
  * شيت الإضافات — بيظهر كباتم شيت على الموبايل وmodal في النص على الديسكتوب.
@@ -21,18 +24,29 @@ export default function AddonsSheet({ open, onClose, meal, date, selectedDates, 
   const [showCopy, setShowCopy] = useState(false);
 
   // ريست الستيت لما يتفتح من جديد
-  const handleOpen = () => {
-    setCheckedAddons(new Set());
-    setNote("");
-    setQuantity(1);
-    setCopyDays([]);
-    setShowCopy(false);
-  };
+  useEffect(() => {
+    if (open) {
+      setCheckedAddons(new Set());
+      setNote("");
+      setQuantity(1);
+      setCopyDays([]);
+      setShowCopy(false);
+    }
+  }, [open, meal?.id, date]);
+
+  // صياغة اسم اليوم والتاريخ (مثال: "للأحد ١١ أكتوبر")
+  const dayLabel = useMemo(() => {
+    if (!date) return "";
+    const d = fromDateKey(date);
+    const dayKey = DAY_KEYS[d.getDay()];
+    const dayName = DAY_NAMES_AR[dayKey] || "";
+    return `${withLam(dayName)} ${formatDayMonth(date)}`;
+  }, [date]);
 
   // حساب الإجمالي الحي
   const total = useMemo(() => {
     if (!meal) return 0;
-    const addonsTotal = meal.addons
+    const addonsTotal = (meal.addons || [])
       .filter((a) => checkedAddons.has(a.id))
       .reduce((s, a) => s + a.price, 0);
     return (meal.price + addonsTotal) * quantity;
@@ -47,22 +61,24 @@ export default function AddonsSheet({ open, onClose, meal, date, selectedDates, 
     });
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = (e) => {
     if (!meal) return;
-    const selectedAddons = meal.addons.filter((a) => checkedAddons.has(a.id));
+    // الوجبة بتطير من زرار "أضف للسلة" لأيقونة السلة
+    flyToCart(e?.currentTarget, { image: meal.image });
+    haptic();
+    const selectedAddons = (meal.addons || []).filter((a) => checkedAddons.has(a.id));
     const targetDates = [date, ...copyDays];
 
     for (const d of targetDates) {
-      for (let i = 0; i < quantity; i++) {
-        addItem({
-          date: d,
-          mealId: meal.id,
-          name: meal.name,
-          price: meal.price,
-          addons: selectedAddons,
-          note,
-        });
-      }
+      addItem({
+        date: d,
+        mealId: meal.id,
+        name: meal.name,
+        price: meal.price,
+        addons: selectedAddons,
+        note,
+        quantity,
+      });
     }
     onClose();
   };
@@ -74,7 +90,6 @@ export default function AddonsSheet({ open, onClose, meal, date, selectedDates, 
       .filter((d) => d !== date)
       .map((d) => {
         const dayData = days?.find((dd) => dd.date === d);
-        // تأكد إن الوجبة موجودة في اليوم ده
         const hasMeal = dayData?.meals?.some((m) => m.id === meal?.id);
         return { date: d, dayName: dayData?.dayName, hasMeal };
       })
@@ -89,15 +104,19 @@ export default function AddonsSheet({ open, onClose, meal, date, selectedDates, 
       onClose={onClose}
       desktop="center"
       title={meal.name}
+      footer={
+        <Button block size="lg" onClick={handleSubmit}>
+          أضف للسلة — {formatPrice(total)}
+        </Button>
+      }
     >
-      {/* الباطن */}
-      <div onAnimationEnd={open ? handleOpen : undefined}>
-        <p className="mb-4 text-sm text-ink-soft">
-          لـ{formatDayMonth(date)}
+      <div>
+        <p className="mb-4 text-sm font-semibold text-ink-soft">
+          {dayLabel}
         </p>
 
         {/* قائمة الإضافات */}
-        {meal.addons.length > 0 && (
+        {meal.addons && meal.addons.length > 0 && (
           <fieldset className="mb-4">
             <legend className="mb-2 text-sm font-bold">الإضافات</legend>
             <div className="space-y-2">
@@ -118,7 +137,7 @@ export default function AddonsSheet({ open, onClose, meal, date, selectedDates, 
                     className="h-5 w-5 rounded border-ink/30 text-brand-red accent-brand-red"
                   />
                   <span className="flex-1 font-semibold">{addon.name}</span>
-                  <span className={cn("text-sm", addon.price === 0 ? "text-green-600 font-semibold" : "text-ink-soft")}>
+                  <span className={cn("text-sm font-bold", addon.price === 0 ? "text-ink" : "text-brand-red")}>
                     {addon.price === 0 ? "مجاني" : `+${formatPrice(addon.price)}`}
                   </span>
                 </label>
@@ -181,13 +200,6 @@ export default function AddonsSheet({ open, onClose, meal, date, selectedDates, 
             )}
           </div>
         )}
-      </div>
-
-      {/* فوتر بزرار الإضافة والإجمالي */}
-      <div className="mt-4 border-t border-ink/10 pt-4">
-        <Button block onClick={handleSubmit}>
-          أضف للسلة — {formatPrice(total)}
-        </Button>
       </div>
     </BottomSheet>
   );
