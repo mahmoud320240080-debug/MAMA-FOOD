@@ -6,17 +6,19 @@ import { formatDayMonth } from "@/lib/dates";
 import { groupItemsByDate, lineTotal, cartSubtotal } from "@/lib/cart";
 import { WHATSAPP_NUMBER } from "@/api/config";
 import { PAYMENT_METHODS } from "@/lib/constants";
+import { formatDeliveryFee } from "@/lib/delivery";
 
 /**
  * @param {Object} params
  * @param {import("@/store/useCartStore").CartItem[]} params.items
  * @param {{ name: string, phone: string, address: string, notes?: string }} params.customer
- * @param {number} params.deliveryFee
+ * @param {number|null} params.deliveryFee - null = المنطقة لسه ما اتختارتش
+ * @param {string} [params.deliveryAreaName]
  * @param {number} [params.orderNumber]
  * @param {"cash"|"vodafone_cash"|"instapay"} [params.paymentMethod]
  * @returns {string} الرسالة المنسقة
  */
-export function buildWhatsAppMessage({ items = [], customer = {}, deliveryFee = 0, orderNumber, paymentMethod }) {
+export function buildWhatsAppMessage({ items = [], customer = {}, deliveryFee = 0, deliveryAreaName, orderNumber, paymentMethod }) {
   const lines = [];
   lines.push("🍽️ *طلب جديد من MAMA FOOD*");
   if (orderNumber) lines.push(`📋 رقم الطلب: *${orderNumber}*`);
@@ -42,13 +44,15 @@ export function buildWhatsAppMessage({ items = [], customer = {}, deliveryFee = 
 
   const sub = cartSubtotal(items);
   lines.push(`المجموع: ${formatPrice(sub)}`);
-  lines.push(`التوصيل: ${formatPrice(deliveryFee)}`);
-  lines.push(`*الإجمالي: ${formatPrice(sub + deliveryFee)}*`);
+  const deliveryLabel = deliveryAreaName ? `التوصيل (${deliveryAreaName})` : "التوصيل";
+  lines.push(`${deliveryLabel}: ${deliveryFee == null ? "حسب المنطقة" : formatDeliveryFee(deliveryFee)}`);
+  lines.push(`*الإجمالي: ${formatPrice(sub + (deliveryFee ?? 0))}*`);
   if (paymentMethod) lines.push(`طريقة الدفع: ${PAYMENT_METHODS[paymentMethod]?.label || PAYMENT_METHODS.cash.label}`);
   lines.push("");
   if (customer.name) lines.push(`👤 ${customer.name}`);
   if (customer.phone) lines.push(`📞 ${customer.phone}`);
-  if (customer.address) lines.push(`📍 ${customer.address}`);
+  if (deliveryAreaName) lines.push(`العنوان: ${deliveryAreaName}`);
+  if (customer.address) lines.push(deliveryAreaName ? `📍 تفاصيل العنوان: ${customer.address}` : `📍 ${customer.address}`);
   if (customer.notes) lines.push(`📝 ${customer.notes}`);
 
   return lines.join("\n");

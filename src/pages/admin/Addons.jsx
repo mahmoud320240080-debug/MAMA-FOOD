@@ -7,10 +7,14 @@ import Modal from "@/components/common/Modal";
 import Skeleton from "@/components/common/Skeleton";
 import ResponsiveTable from "@/components/common/ResponsiveTable";
 import AddonForm from "@/components/admin/AddonForm";
+import FilterBar from "@/components/admin/FilterBar";
 import { EmptyState, PageError } from "@/components/admin/PageState";
 import { formatPrice } from "@/lib/format";
+import { ADDON_PRICES, filterAddons } from "@/lib/filters";
 import { toast } from "@/store/useToastStore";
 import { cn } from "@/lib/cn";
+
+const NO_FILTERS = { q: "", price: "" };
 
 function PriceTag({ price }) {
   if (price === 0) {
@@ -55,10 +59,23 @@ export default function Addons() {
   const queryClient = useQueryClient();
   const [formModal, setFormModal] = useState({ open: false, addon: null });
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [filters, setFilters] = useState(NO_FILTERS);
 
   const addonsQuery = useQuery({ queryKey: ["addons"], queryFn: addonsApi.list });
   const mealsQuery = useQuery({ queryKey: ["meals"], queryFn: mealsApi.list });
-  const addons = addonsQuery.data ?? [];
+  const addons = useMemo(() => addonsQuery.data ?? [], [addonsQuery.data]);
+  const filteredAddons = useMemo(() => filterAddons(addons, filters), [addons, filters]);
+  const updateFilters = (patch) => setFilters((f) => ({ ...f, ...patch }));
+  const priceFilter = useMemo(() => {
+    const base = filterAddons(addons, { ...filters, price: "" });
+    return [{
+      key: "price", label: "السعر",
+      options: [
+        { value: "", label: "الكل", count: base.length },
+        ...Object.entries(ADDON_PRICES).map(([value, label]) => ({ value, label, count: filterAddons(base, { price: value }).length })),
+      ],
+    }];
+  }, [addons, filters]);
 
   // الوجبات المربوطة بكل إضافة
   const mealsByAddon = useMemo(() => {
@@ -157,24 +174,40 @@ export default function Addons() {
         />
       ) : (
         <>
-          <p className="text-sm font-bold text-ink-soft">إجمالي الإضافات: {addons.length}</p>
-          <ResponsiveTable
-            columns={columns}
-            rows={addons}
-            onRowClick={openEdit}
-            renderCard={(a) => (
-              <>
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="min-w-0 text-base font-extrabold [overflow-wrap:anywhere]">{a.name}</h3>
-                  <span className="max-w-[45%] shrink-0 text-end"><PriceTag price={a.price} /></span>
-                </div>
-                <div className="mt-3 flex items-center justify-between gap-2 border-t border-ink/10 pt-2">
-                  <LinkedMeals count={mealsByAddon.get(a.id)?.length || 0} />
-                  <RowActions addon={a} onEdit={openEdit} onDelete={setDeleteTarget} />
-                </div>
-              </>
-            )}
+          <FilterBar
+            search={{ value: filters.q, onChange: (q) => updateFilters({ q }), label: "بحث في الإضافات", placeholder: "اسم الإضافة" }}
+            filters={priceFilter}
+            values={filters}
+            onChange={updateFilters}
+            resultLabel={`${filteredAddons.length} إضافة`}
+            onClearAll={() => setFilters(NO_FILTERS)}
           />
+          {filteredAddons.length === 0 ? (
+            <EmptyState
+              animation="noResults"
+              title="مفيش نتايج"
+              description="جرّب كلمة بحث تانية أو غيّر الفلتر."
+              action={<Button variant="outline" onClick={() => setFilters(NO_FILTERS)}>مسح الفلاتر</Button>}
+            />
+          ) : (
+            <ResponsiveTable
+              columns={columns}
+              rows={filteredAddons}
+              onRowClick={openEdit}
+              renderCard={(a) => (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="min-w-0 text-base font-extrabold [overflow-wrap:anywhere]">{a.name}</h3>
+                    <span className="max-w-[45%] shrink-0 text-end"><PriceTag price={a.price} /></span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-2 border-t border-ink/10 pt-2">
+                    <LinkedMeals count={mealsByAddon.get(a.id)?.length || 0} />
+                    <RowActions addon={a} onEdit={openEdit} onDelete={setDeleteTarget} />
+                  </div>
+                </>
+              )}
+            />
+          )}
         </>
       )}
 

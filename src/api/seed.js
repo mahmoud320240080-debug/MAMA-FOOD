@@ -32,10 +32,16 @@ export const seedWeeklyMenu = () => ({
   sat: ["m_koshary", "m_kofta", "m_burger"],
 });
 
+/** سعر التوصيل الافتراضي (للمنطقة الوحيدة في التثبيت الجديد، ولترحيل إعدادات قديمة من غير رسوم) */
+export const DEFAULT_DELIVERY_FEE = 20;
+
+/** المنطقة الوحيدة اللي بتبدأ بيها الإعدادات (والترحيل من رسوم التوصيل الواحدة القديمة) */
+export const defaultDeliveryArea = (price = DEFAULT_DELIVERY_FEE) => ({ id: "area_all", name: "كل المناطق", price, enabled: true });
+
 export const seedSettings = () => ({
   cutoffMode: "same_day", // كل يوم بيتقفل في نفس اليوم...
   orderCutoffHour: 12, // ...الساعة 12 الضهر
-  deliveryFee: 20,
+  deliveryAreas: [defaultDeliveryArea()],
   // الدفع الإلكتروني مقفول لحد ما صاحب الأكل يحط رقمه من الإعدادات (الكاش متاح دايماً)
   payments: {
     vodafoneCash: { enabled: false, number: "", accountName: "" },

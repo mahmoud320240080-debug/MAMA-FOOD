@@ -1,10 +1,11 @@
 import { USE_MOCK } from "./config";
 import { http } from "./http";
 import { db, simulate } from "./mockDb";
-import { seedWeeklyMenu, seedMeals, seedAddons, seedSettings } from "./seed";
+import { seedWeeklyMenu, seedMeals, seedAddons, seedSettings, defaultDeliveryArea, DEFAULT_DELIVERY_FEE } from "./seed";
 import { UPCOMING_DAYS_COUNT } from "@/lib/constants";
 import { getDayLockTime, getToday, getUpcomingDates, isDayLocked } from "@/lib/dates";
 import { validatePaymentSettings } from "@/lib/payments";
+import { cleanDeliveryAreas, deliveryAreasError } from "@/lib/delivery";
 
 const readMenu = () => db.read("weeklyMenu", seedWeeklyMenu);
 
@@ -13,7 +14,9 @@ const readMenu = () => db.read("weeklyMenu", seedWeeklyMenu);
  * - مفيش cutoffMode = القاعدة القديمة (orderCutoffHour كان ساعة اليوم اللي قبله، 22 مثلاً)،
  *   فبناخد الافتراضي الجديد (نفس اليوم الساعة 12) بدل ما نقرا 22 كساعة في نفس اليوم.
  * - مفيش payments (أو ناقص منها حاجة) = الافتراضي: الدفع الإلكتروني مقفول ومن غير أرقام.
- * رسوم التوصيل وميعاد القفل المتخزنين بيفضلوا زي ما هم.
+ * - مفيش deliveryAreas = نسخة الرسوم الواحدة القديمة: منطقة واحدة "كل المناطق" مفعّلة بنفس الرسوم القديمة
+ *   (deliveryFee، أو الافتراضي لو مش موجودة) — وdeliveryFee بيتشال، ومبقاش بيتقري غير هنا.
+ * ميعاد القفل وباقي الإعدادات المتخزنة بيفضلوا زي ما هم.
  */
 export const readSettings = () => {
   const stored = db.read("settings", seedSettings);
@@ -26,7 +29,12 @@ export const readSettings = () => {
     vodafoneCash: { ...seed.payments.vodafoneCash, ...p.vodafoneCash },
     instapay: { ...seed.payments.instapay, ...p.instapay },
   };
-  const next = { ...stored, ...lock, payments };
+  // ترحيل بس: deliveryFee القديمة بتتحول لسعر المنطقة الوحيدة
+  const { deliveryFee: legacyFee, ...rest } = stored;
+  const deliveryAreas = Array.isArray(stored.deliveryAreas)
+    ? stored.deliveryAreas
+    : [defaultDeliveryArea(legacyFee == null || !Number.isFinite(Number(legacyFee)) ? DEFAULT_DELIVERY_FEE : Number(legacyFee))];
+  const next = { ...rest, ...lock, payments, deliveryAreas };
   return JSON.stringify(next) === JSON.stringify(stored) ? stored : db.write("settings", next);
 };
 
@@ -43,6 +51,14 @@ const cleanPayments = (payments) => {
   return clean;
 };
 
+/** تنضيف مناطق التوصيل قبل الحفظ + نفس التحقق اللي في صفحة الإعدادات */
+const cleanAreas = (areas) => {
+  const clean = cleanDeliveryAreas(areas);
+  const error = deliveryAreasError(clean);
+  if (error) throw new Error(error);
+  return clean;
+};
+
 export const menuApi = {
   /** القالب الأسبوعي الثابت: { sun: [mealId], mon: [...], ... } */
   getWeekly: () => (USE_MOCK ? simulate(readMenu) : http("/menu/weekly")),
@@ -55,7 +71,12 @@ export const menuApi = {
   getSettings: () => (USE_MOCK ? simulate(readSettings) : http("/settings")),
   saveSettings: (s) =>
     USE_MOCK
-      ? simulate(() => db.write("settings", { ...readSettings(), ...s, ...(s.payments ? { payments: cleanPayments(s.payments) } : {}) }))
+      ? simulate(() => db.write("settings", {
+          ...readSettings(),
+          ...s,
+          ...(s.payments ? { payments: cleanPayments(s.payments) } : {}),
+          ...(s.deliveryAreas ? { deliveryAreas: cleanAreas(s.deliveryAreas) } : {}),
+        }))
       : http("/admin/settings", { method: "PUT", body: s }),
 
   /**

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { ArrowRight, MapPin, MessageCircle, Phone, StickyNote, User } from "lucide-react";
+import { ArrowRight, MapPin, MapPinned, MessageCircle, Phone, StickyNote, User } from "lucide-react";
 import { ordersApi } from "@/api";
 import Button from "@/components/common/Button";
 import Skeleton from "@/components/common/Skeleton";
@@ -14,6 +14,7 @@ import { groupItemsByDate, lineTotal, daySubtotal } from "@/lib/cart";
 import { formatDayLabel } from "@/lib/dates";
 import { formatDateTime, formatPrice } from "@/lib/format";
 import { customerWhatsappUrl } from "@/lib/whatsapp";
+import { formatDeliveryFee } from "@/lib/delivery";
 
 const card = "rounded-3xl bg-white p-5 text-ink shadow-soft";
 
@@ -158,7 +159,14 @@ export default function OrderDetails() {
             <div className="space-y-3">
               <InfoRow icon={User} label="الاسم">{customer.name}</InfoRow>
               <InfoRow icon={Phone} label="الموبايل"><span dir="ltr">{customer.phone}</span></InfoRow>
-              <InfoRow icon={MapPin} label="العنوان">{customer.address}</InfoRow>
+              {/* الطلبات القديمة من غير منطقة: الشكل القديم */}
+              {order.deliveryArea && (
+                <InfoRow icon={MapPinned} label="العنوان">
+                  {order.deliveryArea.name}
+                  <span className="ms-1.5 text-sm font-normal text-ink-soft">· {formatDeliveryFee(order.deliveryFee)}</span>
+                </InfoRow>
+              )}
+              <InfoRow icon={MapPin} label={order.deliveryArea ? "تفاصيل العنوان" : "العنوان"}>{customer.address}</InfoRow>
               {customer.notes && <InfoRow icon={StickyNote} label="ملاحظات">{customer.notes}</InfoRow>}
             </div>
             <div className="mt-5 grid grid-cols-2 gap-2">
@@ -177,7 +185,7 @@ export default function OrderDetails() {
             <h2 className="mb-3 text-lg font-extrabold">الحساب</h2>
             <div className="space-y-2">
               <SummaryRow label="المجموع" value={formatPrice(order.subtotal)} />
-              <SummaryRow label="التوصيل" value={formatPrice(order.deliveryFee)} />
+              <SummaryRow label={order.deliveryArea ? `التوصيل (${order.deliveryArea.name})` : "التوصيل"} value={formatPrice(order.deliveryFee)} />
               <hr className="border-ink/10" />
               <SummaryRow label="الإجمالي" value={formatPrice(order.totalPrice)} strong />
             </div>

@@ -8,16 +8,20 @@ import Reveal from "@/components/common/Reveal";
 import LottieAnimation from "@/components/common/LottieAnimation";
 import MealPlaceholder from "@/components/customer/MealPlaceholder";
 import MealForm from "@/components/admin/MealForm";
+import { EmptyState } from "@/components/admin/PageState";
 import { MEAL_CATEGORIES } from "@/lib/constants";
 import { formatPrice } from "@/lib/format";
 import { toast } from "@/store/useToastStore";
-import { Plus, Edit2, Trash2, Search, AlertCircle, RefreshCw } from "lucide-react";
-import Input from "@/components/common/Input";
+import { Plus, Edit2, Trash2, AlertCircle, RefreshCw } from "lucide-react";
+import FilterBar from "@/components/admin/FilterBar";
+import { MEAL_AVAILABILITY, filterMeals, mealCategoryOptions } from "@/lib/filters";
 import { cn } from "@/lib/cn";
+
+const NO_FILTERS = { q: "", category: "", availability: "" };
 
 export default function Meals() {
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState(NO_FILTERS);
   const [formModal, setFormModal] = useState({ open: false, meal: null });
   const [deleteConfirm, setDeleteConfirm] = useState(null); // meal to delete
 
@@ -80,15 +84,33 @@ export default function Meals() {
     },
   });
 
-  const filteredMeals = useMemo(() => {
-    if (!search.trim()) return meals;
-    const q = search.trim().toLowerCase();
-    return meals.filter(
-      (m) =>
-        m.name.toLowerCase().includes(q) ||
-        (m.description && m.description.toLowerCase().includes(q))
-    );
-  }, [meals, search]);
+  const filteredMeals = useMemo(() => filterMeals(meals, filters), [meals, filters]);
+  const updateFilters = (patch) => setFilters((f) => ({ ...f, ...patch }));
+
+  // القسم بس لو الوجبات فيها أقسام. عدد كل اختيار مع باقي الفلاتر
+  const filterConfig = useMemo(() => {
+    const categories = mealCategoryOptions(meals, MEAL_CATEGORIES);
+    const byCategory = filterMeals(meals, { ...filters, category: "" });
+    const byAvailability = filterMeals(meals, { ...filters, availability: "" });
+    return [
+      ...(categories.length
+        ? [{
+            key: "category", label: "القسم",
+            options: [
+              { value: "", label: "كل الأقسام", count: byCategory.length },
+              ...categories.map((c) => ({ ...c, count: byCategory.filter((m) => m.category === c.value).length })),
+            ],
+          }]
+        : []),
+      {
+        key: "availability", label: "الحالة",
+        options: [
+          { value: "", label: "الكل", count: byAvailability.length },
+          ...Object.entries(MEAL_AVAILABILITY).map(([value, label]) => ({ value, label, count: filterMeals(byAvailability, { availability: value }).length })),
+        ],
+      },
+    ];
+  }, [meals, filters]);
 
   if (isLoading) {
     return (
@@ -141,27 +163,23 @@ export default function Meals() {
         </Button>
       </div>
 
-      {/* حقل البحث وإجمالي العدد */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full sm:max-w-xs">
-          <Input
-            placeholder="بحث في الوجبات..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="ps-10"
-          />
-          <Search className="pointer-events-none absolute start-3 top-3.5 h-5 w-5 text-ink-soft" aria-hidden />
-        </div>
-        <span className="text-sm font-bold text-ink-soft">
-          إجمالي الوجبات: {filteredMeals.length}
-        </span>
-      </div>
+      {/* البحث والفلاتر (لو فيه وجبات أصلاً) */}
+      {meals.length > 0 && (
+        <FilterBar
+          search={{ value: filters.q, onChange: (q) => updateFilters({ q }), label: "بحث في الوجبات", placeholder: "اسم الوجبة أو الوصف" }}
+          filters={filterConfig}
+          values={filters}
+          onChange={updateFilters}
+          resultLabel={`${filteredMeals.length} وجبة`}
+          onClearAll={() => setFilters(NO_FILTERS)}
+        />
+      )}
 
-      {filteredMeals.length === 0 ? (
+      {meals.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-ink/20 bg-white p-10 text-center shadow-soft">
           <LottieAnimation name="noResults" size={132} className="mx-auto mb-1" />
           <p className="text-base font-bold text-ink-soft">
-            لا توجد وجبات مسجلة مطابقة.
+            لسه مفيش وجبات.
           </p>
           <Button
             variant="outline"
@@ -171,6 +189,13 @@ export default function Meals() {
             إضافة وجبة الآن
           </Button>
         </div>
+      ) : filteredMeals.length === 0 ? (
+        <EmptyState
+          animation="noResults"
+          title="مفيش نتايج"
+          description="جرّب كلمة بحث تانية أو غيّر الفلاتر."
+          action={<Button variant="outline" onClick={() => setFilters(NO_FILTERS)}>مسح الفلاتر</Button>}
+        />
       ) : (
         <>
           {/* كروت الموبايل (أقل من 768px) */}

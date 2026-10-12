@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react";
-import { Search, Plus, Check } from "lucide-react";
+import { Plus, Check } from "lucide-react";
 import Modal from "@/components/common/Modal";
 import LottieAnimation from "@/components/common/LottieAnimation";
-import Input from "@/components/common/Input";
+import SearchInput from "@/components/common/SearchInput";
+import FilterChips from "./FilterChips";
 import MealPlaceholder from "@/components/customer/MealPlaceholder";
 import { formatPrice } from "@/lib/format";
 import { MEAL_CATEGORIES } from "@/lib/constants";
@@ -10,6 +11,10 @@ import { useAdminMenuStore } from "@/store/useAdminMenuStore";
 import { toast } from "@/store/useToastStore";
 import { cn } from "@/lib/cn";
 import { withLam } from "@/lib/dates";
+import { filterMeals, mealCategoryOptions } from "@/lib/filters";
+
+// الفوكس على البحث في الديسكتوب بس (في الموبايل الكيبورد كان بيفتح ويغطي القايمة)
+const isDesktop = () => typeof window !== "undefined" && window.matchMedia?.("(min-width: 768px)").matches;
 
 export default function AddMealModal({
   open,
@@ -21,16 +26,11 @@ export default function AddMealModal({
 }) {
   const meals = useAdminMenuStore((s) => s.meals);
   const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("");
+  const [autoFocus] = useState(isDesktop);
 
-  const filteredMeals = useMemo(() => {
-    if (!search.trim()) return meals;
-    const q = search.trim().toLowerCase();
-    return meals.filter(
-      (m) =>
-        m.name.toLowerCase().includes(q) ||
-        (m.description && m.description.toLowerCase().includes(q))
-    );
-  }, [meals, search]);
+  const categories = useMemo(() => mealCategoryOptions(meals, MEAL_CATEGORIES), [meals]);
+  const filteredMeals = useMemo(() => filterMeals(meals, { q: search, category }), [meals, search, category]);
 
   const handleSelect = async (meal) => {
     if (currentMealIds.includes(meal.id)) return;
@@ -52,24 +52,32 @@ export default function AddMealModal({
       size="md"
     >
       <div className="space-y-4">
-        {/* حقل البحث */}
-        <div className="relative">
-          <Input
-            placeholder="ابحث بالاسم أو الوصف..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="ps-10"
-            autoFocus
+        {/* البحث + شرايح الأقسام (لو الوجبات فيها أقسام) */}
+        <SearchInput value={search} onChange={setSearch} label="بحث في الوجبات" placeholder="ابحث بالاسم أو الوصف..." autoFocus={autoFocus} />
+        {categories.length > 1 && (
+          <FilterChips
+            label="فلترة بالقسم"
+            options={[{ value: "", label: "الكل" }, ...categories]}
+            value={category}
+            onChange={setCategory}
           />
-          <Search className="pointer-events-none absolute start-3 top-3.5 h-5 w-5 text-ink-soft" aria-hidden />
-        </div>
+        )}
 
         {/* قائمة الوجبات */}
         <div className="space-y-2 max-h-[60dvh] overflow-y-auto pe-1">
           {filteredMeals.length === 0 ? (
             <div className="flex flex-col items-center py-6 text-center">
               <LottieAnimation name="noResults" size={110} />
-              <p className="text-sm font-semibold text-ink-soft">مفيش وجبات مطابقة للبحث</p>
+              <p className="text-sm font-semibold text-ink-soft">مفيش نتايج</p>
+              {(search || category) && (
+                <button
+                  type="button"
+                  onClick={() => { setSearch(""); setCategory(""); }}
+                  className="mt-2 min-h-[44px] rounded-full px-4 text-sm font-bold text-brand-red transition hover:bg-brand-red/10"
+                >
+                  مسح البحث
+                </button>
+              )}
             </div>
           ) : (
             filteredMeals.map((meal) => {

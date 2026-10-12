@@ -10,7 +10,7 @@ import { whatsappUrl } from "@/lib/whatsapp";
 import { ORDER_STATUS, PAYMENT_METHODS } from "@/lib/constants";
 import { isElectronicPayment } from "@/lib/payments";
 import { PAYMENT_ICONS, PaymentStatusBadge } from "@/components/common/PaymentBadges";
-import { CircleCheckBig, MapPin, MessageCircle, Phone, StickyNote, User } from "lucide-react";
+import { CircleCheckBig, MapPin, MapPinned, MessageCircle, Phone, StickyNote, User } from "lucide-react";
 import { BRAND_COLORS } from "@/lib/brandColors";
 
 /** سطر في بيانات التوصيل: أيقونة + كلام، كله على البداية (يمين في RTL) بنفس المسافة */
@@ -57,6 +57,7 @@ export default function OrderSuccess() {
       items: order.items,
       customer: order.customer,
       deliveryFee: order.deliveryFee,
+      deliveryAreaName: order.deliveryArea?.name,
       orderNumber: order.orderNumber,
       paymentMethod: order.paymentMethod,
     });
@@ -107,7 +108,7 @@ export default function OrderSuccess() {
 
       {/* ملخص الطلب */}
       <div className="mt-6 text-start">
-        <OrderSummary items={order.items} deliveryFee={order.deliveryFee} />
+        <OrderSummary items={order.items} deliveryFee={order.deliveryFee} areaName={order.deliveryArea?.name} />
       </div>
 
       {/* بيانات العميل */}
@@ -117,7 +118,9 @@ export default function OrderSuccess() {
           <DetailRow icon={User} label="الاسم">{order.customer.name}</DetailRow>
           {/* الأرقام بترتيبها LTR جوه <bdi>، والسطر نفسه على البداية زي الباقي */}
           <DetailRow icon={Phone} label="الموبايل"><bdi dir="ltr">{order.customer.phone}</bdi></DetailRow>
-          <DetailRow icon={MapPin} label="العنوان">{order.customer.address}</DetailRow>
+          {/* الطلبات القديمة من غير منطقة: من غير السطر ده */}
+          {order.deliveryArea && <DetailRow icon={MapPinned} label="العنوان">{order.deliveryArea.name}</DetailRow>}
+          <DetailRow icon={MapPin} label={order.deliveryArea ? "تفاصيل العنوان" : "العنوان"}>{order.customer.address}</DetailRow>
           {order.customer.notes && <DetailRow icon={StickyNote} label="ملاحظات">{order.customer.notes}</DetailRow>}
           {electronic && (
             <DetailRow icon={PAYMENT_ICONS[order.paymentMethod]} label="الدفع">

@@ -8,6 +8,8 @@ import {
   availablePaymentMethods, defaultPayment, isElectronicPayment, validateProofFile,
 } from "@/lib/payments";
 import { blobToDataUrl, compressImage } from "@/lib/image";
+import { findEnabledArea } from "@/lib/delivery";
+import { filterOrders } from "@/lib/filters";
 
 /** طلب قديم من قبل طرق الدفع => كاش ومش محتاج دفع (والحقول الناقصة بقيمها الافتراضية) */
 /**
@@ -56,27 +58,8 @@ export const calcOrderTotal = (items, deliveryFee = 0) => {
 /** الأيام المطلوبة في الطلب (مش يوم إنشاء الطلب) — مترتبة */
 export const orderDates = (order) => [...new Set(order.items.map((it) => it.date))].sort();
 
-/** فلتر الدفع: "cash" = طلبات الكاش، غير كده = حالة دفع طلب إلكتروني */
-const matchesPayment = (o, payment) =>
-  payment === "cash" ? !isElectronicPayment(o.paymentMethod) : isElectronicPayment(o.paymentMethod) && o.payment?.status === payment;
-
-/**
- * فلترة الطلبات (نفس منطق GET /admin/orders?q=&status=&date=&payment= على الباك)
- * q: رقم الطلب أو اسم العميل أو الموبايل | date: أي طلب فيه صنف لليوم ده | payment: cash أو حالة دفع
- * النتيجة: الأحدث الأول
- */
-export const filterOrders = (orders, { q, status, date, payment } = {}) => {
-  const term = q?.trim().toLowerCase().replace(/^#/, "");
-  return orders
-    .filter((o) => !status || o.status === status)
-    .filter((o) => !payment || matchesPayment(o, payment))
-    .filter((o) => !date || o.items.some((it) => it.date === date))
-    .filter((o) => !term
-      || String(o.orderNumber).includes(term)
-      || (o.customer?.name || "").toLowerCase().includes(term)
-      || (o.customer?.phone || "").includes(term))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-};
+/** فلترة الطلبات (نفس منطق GET /admin/orders?q=&status=&date=&payment=&area=&created=&sort= على الباك) */
+export { filterOrders };
 
 /**
  * ملخص التحضير ليوم معين: إجمالي كل وجبة وكل إضافة (الطلبات الملغية مش محسوبة).
@@ -114,7 +97,8 @@ export const buildPrepSummary = (orders, date) => {
 
 export const ordersApi = {
   /**
-   * إنشاء طلب: POST /orders.
+   * إنشاء طلب: POST /orders — payload: { customer, items, paymentMethod, deliveryAreaId }.
+   * رسوم التوصيل بتتحسب من المنطقة المختارة في الإعدادات (عمرها ما بتتاخد من الفرونت).
    * التحويل (فودافون كاش/إنستاباي): صورة التحويل إجبارية وبتتبعت مع الطلب في نفس الريكوست
    * (multipart: الحقل "order" فيه الطلب JSON والحقل "proof" الصورة) => الطلب بيتعمل والدفع "confirmed"، وعمره ما يتعمل من غير صورته.
    * التحقق (النوع والحجم) قبل الضغط، والضغط في المتصفح (1280px، JPEG 0.75) قبل الرفع.
@@ -149,8 +133,10 @@ export const ordersApi = {
       if (!availablePaymentMethods(settings).includes(paymentMethod)) {
         throw new Error("طريقة الدفع دي مش متاحة دلوقتي. اختار طريقة تانية وأكّد الطلب.");
       }
-      // رسوم التوصيل من الإعدادات (زي الباك) مش من اللي الفرونت باعته
-      const { subtotal, deliveryFee, total } = calcOrderTotal(payload.items, settings.deliveryFee ?? 0);
+      // منطقة التوصيل لازم تكون موجودة ومفعّلة دلوقتي، والرسوم من سعرها في الإعدادات (زي الباك) مش من الفرونت
+      const area = findEnabledArea(settings, payload.deliveryAreaId);
+      if (!area) throw new Error("منطقة التوصيل دي مش متاحة دلوقتي. اختار منطقتك تاني وأكّد الطلب.");
+      const { subtotal, deliveryFee, total } = calcOrderTotal(payload.items, area.price);
       const createdAt = new Date().toISOString();
       const order = {
         id: uid("o"),
@@ -159,6 +145,8 @@ export const ordersApi = {
         createdAt,
         customer: payload.customer,
         items: payload.items,
+        // نسخة من المنطقة والرسوم وقت الطلب: تغيير اسمها أو سعرها بعدين ما يغيّرش الطلبات القديمة
+        deliveryArea: { id: area.id, name: area.name },
         subtotal, deliveryFee, totalPrice: total,
         paymentMethod,
         payment: src ? { status: "confirmed", proofUploadedAt: createdAt } : defaultPayment(paymentMethod),

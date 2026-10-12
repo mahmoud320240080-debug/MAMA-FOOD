@@ -1,15 +1,13 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Search, X, List, LayoutGrid } from "lucide-react";
+import { List, LayoutGrid } from "lucide-react";
 import { ordersApi, orderDates } from "@/api";
-import { filterOrders } from "@/api/orders";
-import Input from "@/components/common/Input";
 import Button from "@/components/common/Button";
 import Skeleton from "@/components/common/Skeleton";
 import Modal from "@/components/common/Modal";
 import ResponsiveTable from "@/components/common/ResponsiveTable";
-import FilterChips from "@/components/admin/FilterChips";
+import FilterBar from "@/components/admin/FilterBar";
 import OrderStatusSelect from "@/components/admin/OrderStatusSelect";
 import PrepSummary from "@/components/admin/PrepSummary";
 import OrdersKanban from "@/components/admin/OrdersKanban";
@@ -17,9 +15,14 @@ import { EmptyState, PageError } from "@/components/admin/PageState";
 import { PaymentChip } from "@/components/common/PaymentBadges";
 import { ORDER_STATUS } from "@/lib/constants";
 import { formatDayLabel } from "@/lib/dates";
+import { ORDER_CREATED, ORDER_SORTS, filterOrders, orderAreaOptions } from "@/lib/filters";
 import { formatDateTime, formatPrice } from "@/lib/format";
 import { toast } from "@/store/useToastStore";
 import { cn } from "@/lib/cn";
+
+/** اسم كل فلتر في الـ URL (عشان الريفريش واللينك المتشارك يحافظوا عليه) */
+const PARAM_KEYS = { q: "q", status: "status", date: "date", payment: "pay", area: "area", created: "created", sort: "sort" };
+const DEFAULT_SORT = "newest";
 
 /** فلتر الدفع: كاش أو تحويل (الإيصال بيترفع مع الطلب فبيبقى "وصل الإيصال" دايماً) */
 const PAYMENT_FILTERS = [
@@ -66,7 +69,8 @@ export default function Orders() {
   const date = params.get("date") || "";
   // قيمة قديمة أو غلط في لينك محفوظ => من غير فلتر
   const payment = PAYMENT_FILTERS.some((f) => f.value === params.get("pay")) ? params.get("pay") : "";
-  const hasFilters = !!(q || status || date || payment);
+  const created = ORDER_CREATED[params.get("created")] ? params.get("created") : "";
+  const sort = ORDER_SORTS[params.get("sort")] ? params.get("sort") : DEFAULT_SORT;
 
   // طريقة العرض: قائمة أو كانبان مع الحفظ في localStorage
   const [view, setView] = useState(() => {
@@ -95,11 +99,6 @@ export default function Orders() {
   const [bulkStatusPickerOpen, setBulkStatusPickerOpen] = useState(false);
   const [bulkConfirmModal, setBulkConfirmModal] = useState({ open: false, targetStatus: "" });
 
-  // مسح التحديد عند تغيير الفلاتر أو طريقة العرض
-  useEffect(() => {
-    setSelectedIds(new Set());
-  }, [q, status, date, payment, view]);
-
   // الفلاتر في الـ URL عشان الريفريش والرجوع من صفحة التفاصيل يحافظوا عليها
   const setParam = (key, value) =>
     setParams((prev) => {
@@ -111,6 +110,17 @@ export default function Orders() {
 
   const clearFilters = () => setParams(tab === "prep" ? { tab } : {}, { replace: true });
 
+  // تغيير فلتر أو أكتر مرة واحدة (الـ BottomSheet بيطبّق كذا فلتر في نفس اللحظة)
+  const updateFilters = (patch) =>
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      for (const [key, value] of Object.entries(patch)) {
+        if (value && !(key === "sort" && value === DEFAULT_SORT)) next.set(PARAM_KEYS[key], value);
+        else next.delete(PARAM_KEYS[key]);
+      }
+      return next;
+    }, { replace: true });
+
   const { data: orders = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["orders"],
     queryFn: () => ordersApi.list(),
@@ -119,7 +129,18 @@ export default function Orders() {
     refetchInterval: 30_000,
   });
 
-  const filtered = useMemo(() => filterOrders(orders, { q, status, date, payment }), [orders, q, status, date, payment]);
+  // المناطق اللي ظاهرة في الطلبات (ومنطقة مش موجودة في لينك قديم => من غير فلتر)
+  const areaOptions = useMemo(() => orderAreaOptions(orders), [orders]);
+  const area = areaOptions.some((o) => o.value === params.get("area")) ? params.get("area") : "";
+
+  // نفس الفلاتر للقايمة والكانبان
+  const filters = useMemo(() => ({ q, status, date, payment, area, created, sort }), [q, status, date, payment, area, created, sort]);
+  const filtered = useMemo(() => filterOrders(orders, filters), [orders, filters]);
+
+  // مسح التحديد عند تغيير الفلاتر أو الترتيب أو طريقة العرض
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [filters, view]);
 
   // طفرة التحديث الجماعي
   const bulkMutation = useMutation({
@@ -162,32 +183,58 @@ export default function Orders() {
     });
   };
 
-  // عدد كل حالة (مع باقي الفلاتر) وعدد كل يوم (مع باقي الفلاتر)
-  const statusOptions = useMemo(() => {
-    const base = filterOrders(orders, { q, date, payment });
-    return [
-      { value: "", label: "كل الحالات", count: base.length },
-      ...Object.entries(ORDER_STATUS).map(([value, s]) => ({ value, label: s.label, count: base.filter((o) => o.status === value).length })),
-    ];
-  }, [orders, q, date, payment]);
-
-  const paymentOptions = useMemo(() => {
-    const base = filterOrders(orders, { q, status, date });
-    return [
-      { value: "", label: "الكل", count: base.length },
-      ...PAYMENT_FILTERS.map((f) => ({ ...f, count: filterOrders(base, { payment: f.value }).length })),
-    ];
-  }, [orders, q, status, date]);
-
-  const dayOptions = useMemo(() => {
-    const base = filterOrders(orders, { q, status, payment });
+  // الفلاتر وعدد كل اختيار (مع باقي الفلاتر)
+  const filterConfig = useMemo(() => {
+    const without = (key) => filterOrders(orders, { ...filters, [key]: "" });
+    const byStatus = without("status");
+    const byDay = without("date");
+    const byPayment = without("payment");
+    const byArea = without("area");
+    const byCreated = without("created");
     const dates = new Set(orders.flatMap(orderDates));
     if (date) dates.add(date);
     return [
-      { value: "", label: "كل الأيام" },
-      ...[...dates].sort().map((d) => ({ value: d, label: formatDayLabel(d), count: base.filter((o) => o.items.some((it) => it.date === d)).length })),
+      {
+        key: "status", label: "الحالة",
+        options: [
+          { value: "", label: "كل الحالات", count: byStatus.length },
+          ...Object.entries(ORDER_STATUS).map(([value, s]) => ({ value, label: s.label, count: byStatus.filter((o) => o.status === value).length })),
+        ],
+      },
+      {
+        key: "date", label: "اليوم المطلوب",
+        options: [
+          { value: "", label: "كل الأيام" },
+          ...[...dates].sort().map((d) => ({ value: d, label: formatDayLabel(d), count: byDay.filter((o) => o.items.some((it) => it.date === d)).length })),
+        ],
+      },
+      {
+        key: "payment", label: "الدفع",
+        options: [
+          { value: "", label: "كل طرق الدفع", count: byPayment.length },
+          ...PAYMENT_FILTERS.map((f) => ({ ...f, count: filterOrders(byPayment, { payment: f.value }).length })),
+        ],
+      },
+      {
+        key: "area", label: "المنطقة",
+        options: [
+          { value: "", label: "كل المناطق", count: byArea.length },
+          ...areaOptions.map((o) => ({ ...o, count: filterOrders(byArea, { area: o.value }).length })),
+        ],
+      },
+      {
+        key: "created", label: "تاريخ الطلب",
+        options: [
+          { value: "", label: "كل التواريخ", count: byCreated.length },
+          ...Object.entries(ORDER_CREATED).map(([value, label]) => ({ value, label, count: filterOrders(byCreated, { created: value }).length })),
+        ],
+      },
+      {
+        key: "sort", label: "الترتيب", defaultValue: DEFAULT_SORT, counted: false,
+        options: Object.entries(ORDER_SORTS).map(([value, label]) => ({ value, label })),
+      },
     ];
-  }, [orders, q, status, date, payment]);
+  }, [orders, filters, date, areaOptions]);
 
   const openOrder = (o) => navigate(`/admin/orders/${o.id}`, { state: { from: location.search } });
 
@@ -332,36 +379,20 @@ export default function Orders() {
         />
       ) : (
         <div className="space-y-4">
-          {/* البحث والفلاتر */}
-          <div className="relative w-full sm:max-w-sm">
-            <Input
-              type="search"
-              aria-label="بحث في الطلبات"
-              placeholder="رقم الطلب، الاسم أو الموبايل"
-              value={q}
-              onChange={(e) => setParam("q", e.target.value)}
-              className="ps-11"
-            />
-            <Search className="pointer-events-none absolute start-4 top-3.5 h-5 w-5 text-ink-soft" aria-hidden />
-          </div>
-          <FilterChips label="فلترة بالحالة" options={statusOptions} value={status} onChange={(v) => setParam("status", v)} />
-          <FilterChips label="فلترة باليوم المطلوب" options={dayOptions} value={date} onChange={(v) => setParam("date", v)} />
-          <FilterChips label="فلترة بالدفع" options={paymentOptions} value={payment} onChange={(v) => setParam("pay", v)} />
-
-          <div className="flex min-h-[44px] items-center justify-between gap-3">
-            <p className="text-sm font-bold text-ink-soft">{filtered.length} طلب</p>
-            {hasFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters}>
-                <X className="h-4 w-4" aria-hidden />
-                مسح الفلاتر
-              </Button>
-            )}
-          </div>
+          {/* البحث والفلاتر (نفسها للقايمة والكانبان) */}
+          <FilterBar
+            search={{ value: q, onChange: (v) => updateFilters({ q: v }), label: "بحث في الطلبات", placeholder: "رقم الطلب، الاسم، الموبايل أو المنطقة" }}
+            filters={filterConfig}
+            values={filters}
+            onChange={updateFilters}
+            resultLabel={`${filtered.length} طلب`}
+            onClearAll={clearFilters}
+          />
 
           {filtered.length === 0 ? (
             <EmptyState
               animation="noResults"
-              title="مفيش طلبات مطابقة"
+              title="مفيش نتايج"
               description="جرّب كلمة بحث تانية أو غيّر الفلاتر."
               action={<Button variant="outline" onClick={clearFilters}>مسح الفلاتر</Button>}
             />

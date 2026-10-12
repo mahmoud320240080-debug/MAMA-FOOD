@@ -17,7 +17,7 @@ export const useCartStore = create(
       /** @type {CartItem[]} */
       items: [],
       /** @type {Customer} */
-      customer: { name: "", phone: "", address: "", notes: "" },
+      customer: { name: "", phone: "", address: "", notes: "", deliveryAreaId: "" },
       /** @type {CartItem|null} */
       _lastRemoved: null,
       /** آخر طريقة دفع اختارها الزبون (بتتحفظ بعد الطلب زي بياناته) */

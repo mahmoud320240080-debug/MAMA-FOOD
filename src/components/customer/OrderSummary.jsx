@@ -2,15 +2,19 @@ import { CalendarDays, StickyNote } from "lucide-react";
 import { formatPrice } from "@/lib/format";
 import { formatDayMonth } from "@/lib/dates";
 import { groupItemsByDate, daySubtotal, lineTotal, cartSubtotal } from "@/lib/cart";
+import { formatDeliveryFee } from "@/lib/delivery";
 
 /**
- * ملخص الطلب — بيستخدم في الشيك آوت وصفحة النجاح
+ * ملخص الطلب — بيستخدم في الشيك آوت وصفحة النجاح.
+ * deliveryFee = null: الزبون لسه ما اختارش المنطقة => "اختار العنوان" والإجمالي من غير توصيل.
+ * areaName: اسم المنطقة جنب "التوصيل" (الطلبات القديمة من غير منطقة: "التوصيل" بس).
  */
-export default function OrderSummary({ items, deliveryFee = 0, collapsible = false }) {
+export default function OrderSummary({ items, deliveryFee = 0, areaName, collapsible = false }) {
   const grouped = groupItemsByDate(items);
   const sortedDates = Object.keys(grouped).sort();
   const sub = cartSubtotal(items);
-  const total = sub + deliveryFee;
+  const pendingArea = deliveryFee == null;
+  const total = sub + (pendingArea ? 0 : deliveryFee);
 
   const content = (
     <div className="space-y-4">
@@ -64,14 +68,17 @@ export default function OrderSummary({ items, deliveryFee = 0, collapsible = fal
           <span className="text-ink-soft">المجموع</span>
           <span className="font-semibold">{formatPrice(sub)}</span>
         </div>
-        <div className="flex justify-between">
-          <span className="text-ink-soft">التوصيل</span>
-          <span className="font-semibold">{formatPrice(deliveryFee)}</span>
+        <div className="flex justify-between gap-3">
+          <span className="min-w-0 text-ink-soft [overflow-wrap:anywhere]">{areaName ? `التوصيل (${areaName})` : "التوصيل"}</span>
+          <span className={pendingArea ? "shrink-0 font-semibold text-brand-red" : "shrink-0 font-semibold"}>
+            {pendingArea ? "اختار العنوان" : formatDeliveryFee(deliveryFee)}
+          </span>
         </div>
         <div className="flex justify-between text-lg font-extrabold">
           <span>الإجمالي</span>
           <span className="text-brand-red">{formatPrice(total)}</span>
         </div>
+        {pendingArea && <p className="text-xs text-ink-soft">التوصيل هيتضاف على الإجمالي لما تختار العنوان.</p>}
       </div>
     </div>
   );

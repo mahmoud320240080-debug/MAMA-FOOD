@@ -16,18 +16,20 @@ import CopyButton from "@/components/common/CopyButton";
 import { PAYMENT_ICONS } from "@/components/common/PaymentBadges";
 import { PAYMENT_METHODS, PHONE_REGEX } from "@/lib/constants";
 import { availablePaymentMethods, isElectronicPayment, paymentDestination } from "@/lib/payments";
+import { areaOptionLabel, enabledAreas, findEnabledArea } from "@/lib/delivery";
 import { formatDayLabel, getLockedDates } from "@/lib/dates";
 import { formatPrice } from "@/lib/format";
 import { whatsappUrl } from "@/lib/whatsapp";
 import { cartSubtotal } from "@/lib/cart";
-import { CircleCheck, MessageCircle, ReceiptText } from "lucide-react";
+import { ChevronDown, CircleCheck, MessageCircle, ReceiptText } from "lucide-react";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/cn";
 
 const schema = z.object({
   name: z.string().min(2, "الاسم لازم يكون حرفين على الأقل"),
   phone: z.string().regex(PHONE_REGEX, "رقم الموبايل مش صح (مثال: 01012345678)"),
-  address: z.string().min(3, "العنوان مطلوب"),
+  deliveryAreaId: z.string().min(1, "اختار العنوان"),
+  address: z.string().min(3, "اكتب تفاصيل العنوان"),
   notes: z.string().optional(),
   paymentMethod: z.enum(["cash", "vodafone_cash", "instapay"]),
 });
@@ -40,6 +42,7 @@ const PAYMENT_HINTS = {
 };
 
 const PROOF_REQUIRED = "ارفع صورة التحويل عشان تكمّل";
+const AREA_UNAVAILABLE = "العنوان اللي كنت مختاره مبقاش متاح. اختار العنوان من جديد.";
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -56,11 +59,10 @@ export default function Checkout() {
     if (items.length === 0 && !orderPlaced.current) navigate("/", { replace: true });
   }, [items.length, navigate]);
 
-  // جيب الإعدادات (رسوم التوصيل وميعاد القفل)
+  // جيب الإعدادات (مناطق التوصيل وميعاد القفل وطرق الدفع)
   const queryClient = useQueryClient();
   const settingsQuery = { queryKey: ["settings"], queryFn: menuApi.getSettings, staleTime: 0 }; // الأدمن ممكن يكون غيّرها
   const { data: settings } = useQuery(settingsQuery);
-  const deliveryFee = settings?.deliveryFee ?? 0;
 
   // أيام في السلة اتقفلت: بنعرضها أول ما الصفحة تفتح، ونتحقق تاني لحظة التأكيد
   const itemDates = items.map((it) => it.date);
@@ -74,12 +76,14 @@ export default function Checkout() {
     handleSubmit,
     watch,
     setValue,
+    setFocus,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(schema),
     defaultValues: {
       name: customer.name || "",
       phone: customer.phone || "",
+      deliveryAreaId: customer.deliveryAreaId || "",
       address: customer.address || "",
       notes: customer.notes || "",
       paymentMethod: savedPaymentMethod || "cash",
@@ -98,6 +102,28 @@ export default function Checkout() {
   const electronic = isElectronicPayment(selectedMethod);
   const destination = electronic ? paymentDestination(selectedMethod, settings) : null;
 
+  // مناطق التوصيل المفعّلة (لو واحدة بس بتتختار لوحدها). المنطقة المحفوظة من طلب قبل كده
+  // لازم تكون لسه موجودة ومفعّلة، وإلا بتتمسح ونطلب منه يختار تاني. رسوم التوصيل = سعر المنطقة المختارة
+  const areas = enabledAreas(settings);
+  const selectedAreaId = formValues.deliveryAreaId;
+  const selectedArea = findEnabledArea(settings, selectedAreaId);
+  const deliveryFee = selectedArea ? selectedArea.price : null; // null = لسه ما اختارش
+  const [areaNotice, setAreaNotice] = useState(null);
+  const areaIds = areas.map((a) => a.id).join();
+  useEffect(() => {
+    if (!settings) return;
+    const ids = areaIds ? areaIds.split(",") : [];
+    if (selectedAreaId && ids.includes(selectedAreaId)) return;
+    if (ids.length === 1) {
+      setValue("deliveryAreaId", ids[0], { shouldValidate: true });
+      setAreaNotice(null);
+    } else if (selectedAreaId) {
+      setValue("deliveryAreaId", "");
+      setAreaNotice(AREA_UNAVAILABLE);
+    }
+  }, [settings, areaIds, selectedAreaId, setValue]);
+  const areaError = errors.deliveryAreaId?.message || areaNotice;
+
   // صورة التحويل (فودافون كاش/إنستاباي): إجبارية قبل التأكيد وبتتبعت مع الطلب نفسه.
   // تغيير طريقة الدفع بيمسحها: الصورة بتاعة تحويل على طريقة معينة، ومتنفعش لطريقة تانية ولا للكاش.
   const [proofFile, setProofFile] = useState(null);
@@ -113,7 +139,7 @@ export default function Checkout() {
       ordersApi.create({
         customer: { name: data.name, phone: data.phone, address: data.address, notes: data.notes },
         items,
-        deliveryFee,
+        deliveryAreaId: data.deliveryAreaId,
         paymentMethod: data.paymentMethod,
       }, proof),
     onSuccess: (order) => {
@@ -124,6 +150,7 @@ export default function Checkout() {
         phone: order.customer.phone,
         address: order.customer.address,
         notes: order.customer.notes,
+        deliveryAreaId: order.deliveryArea?.id || "",
       });
       savePaymentMethod(order.paymentMethod);
       clearCart();
@@ -160,6 +187,13 @@ export default function Checkout() {
         setLockedOpen(true);
         return;
       }
+      // المنطقة اتقفلت أو اتمسحت من الإعدادات وهو في الصفحة => ما نبعتش، ويختار تاني
+      if (!findEnabledArea(latest, data.deliveryAreaId)) {
+        setValue("deliveryAreaId", "");
+        setAreaNotice(AREA_UNAVAILABLE);
+        setFocus("deliveryAreaId");
+        return;
+      }
       mutation.mutate({ data, proof: electronic ? proofFile : null });
     } catch {
       toast.error("حصلت مشكلة أثناء التحقق، حاول تاني.");
@@ -185,11 +219,12 @@ export default function Checkout() {
         notes: formValues.notes || customer.notes,
       },
       deliveryFee,
+      deliveryAreaName: selectedArea?.name,
       paymentMethod: selectedMethod,
     });
-  }, [items, formValues.name, formValues.phone, formValues.address, formValues.notes, customer, deliveryFee, selectedMethod]);
+  }, [items, formValues.name, formValues.phone, formValues.address, formValues.notes, customer, deliveryFee, selectedArea?.name, selectedMethod]);
 
-  const total = cartSubtotal(items) + deliveryFee;
+  const total = cartSubtotal(items) + (deliveryFee ?? 0);
 
   if (items.length === 0) return null;
 
@@ -202,10 +237,10 @@ export default function Checkout() {
         <div className="mb-6 lg:order-2 lg:mb-0">
           <div className="lg:sticky lg:top-24">
             <div className="lg:hidden">
-              <OrderSummary items={items} deliveryFee={deliveryFee} collapsible />
+              <OrderSummary items={items} deliveryFee={deliveryFee} areaName={selectedArea?.name} collapsible />
             </div>
             <div className="hidden lg:block">
-              <OrderSummary items={items} deliveryFee={deliveryFee} />
+              <OrderSummary items={items} deliveryFee={deliveryFee} areaName={selectedArea?.name} />
             </div>
           </div>
         </div>
@@ -232,9 +267,34 @@ export default function Checkout() {
                 error={errors.phone?.message}
                 {...register("phone")}
               />
+              <div>
+                <label htmlFor="deliveryAreaId" className="mb-1.5 block text-sm font-semibold">العنوان</label>
+                {settings ? (
+                  <div className="relative">
+                    <select
+                      id="deliveryAreaId"
+                      aria-invalid={!!areaError}
+                      aria-describedby={areaError ? "deliveryAreaId-err" : undefined}
+                      className={cn(
+                        "min-h-[48px] w-full cursor-pointer appearance-none rounded-2xl border-2 bg-white pe-11 ps-4 text-base transition focus:border-brand-red focus:outline-none",
+                        areaError ? "border-brand-red" : "border-ink/10",
+                        selectedArea ? "text-ink" : "text-ink-soft"
+                      )}
+                      {...register("deliveryAreaId", { onChange: () => setAreaNotice(null) })}
+                    >
+                      <option value="" disabled className="text-ink-soft">اختار العنوان</option>
+                      {areas.map((a) => <option key={a.id} value={a.id} className="text-ink">{areaOptionLabel(a)}</option>)}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute end-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-soft" aria-hidden />
+                  </div>
+                ) : (
+                  <div className="min-h-[48px] animate-pulse rounded-2xl border-2 border-ink/10 bg-cream" aria-busy="true" />
+                )}
+                {areaError && <p id="deliveryAreaId-err" role="alert" className="mt-1 text-sm font-medium text-brand-red">{areaError}</p>}
+              </div>
               <Input
-                label="العنوان"
-                placeholder="العنوان بالتفصيل"
+                label="تفاصيل العنوان"
+                placeholder="الشارع، رقم العمارة، الدور، أقرب علامة مميزة"
                 error={errors.address?.message}
                 {...register("address")}
               />
@@ -285,13 +345,20 @@ export default function Checkout() {
             <section className="space-y-4 rounded-3xl bg-white p-5 shadow-soft" aria-labelledby="transfer-title">
               <h2 id="transfer-title" className="text-xl font-bold">حوّل المبلغ وارفع صورة التحويل</h2>
 
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="min-w-0">
-                  <span className="block text-xs font-semibold text-ink-soft">المبلغ اللي هتحوّله</span>
-                  <span className="block text-2xl font-black text-brand-red">{formatPrice(total)}</span>
+              {/* المبلغ شامل توصيل المنطقة، فمش بيظهر غير بعد ما يختارها */}
+              {selectedArea ? (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="min-w-0">
+                    <span className="block text-xs font-semibold text-ink-soft">المبلغ اللي هتحوّله</span>
+                    <span className="block text-2xl font-black text-brand-red">{formatPrice(total)}</span>
+                  </p>
+                  <CopyButton value={String(total)} label="نسخ المبلغ" successMessage="اتنسخ المبلغ" />
+                </div>
+              ) : (
+                <p className="rounded-2xl bg-brand-yellow-soft p-3 text-sm font-semibold text-ink">
+                  اختار العنوان الأول عشان يظهر المبلغ اللي هتحوّله (شامل التوصيل).
                 </p>
-                <CopyButton value={String(total)} label="نسخ المبلغ" successMessage="اتنسخ المبلغ" />
-              </div>
+              )}
 
               {destination?.value && (
                 <div>
@@ -332,9 +399,12 @@ export default function Checkout() {
 
           {/* الإجمالي وأزرار */}
           <div className="space-y-3 pb-safe">
-            <div className="flex items-center justify-between rounded-3xl bg-brand-red px-5 py-4 text-lg font-extrabold text-white">
-              <span>الإجمالي</span>
-              <span>{formatPrice(total)}</span>
+            <div className="rounded-3xl bg-brand-red px-5 py-4 text-white">
+              <div className="flex items-center justify-between text-lg font-extrabold">
+                <span>الإجمالي</span>
+                <span>{formatPrice(total)}</span>
+              </div>
+              {!selectedArea && <p className="mt-0.5 text-sm text-white/85">التوصيل هيتضاف لما تختار العنوان</p>}
             </div>
 
             <Button type="submit" block size="lg" loading={mutation.isPending} disabled={!settings}>
