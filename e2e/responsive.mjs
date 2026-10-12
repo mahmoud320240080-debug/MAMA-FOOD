@@ -45,9 +45,9 @@ const audit = () => auditPage(page);
 
 const WIDTHS = [320, 375, 768, 1024, 1280];
 const states = [
-  { name: "addons", path: "/admin/addons", ready: "إجمالي الإضافات", table: true },
-  { name: "addons-form", path: "/admin/addons", ready: "إجمالي الإضافات", open: async () => { await clickText(page, "button", "إضافة جديدة"); await page.waitForSelector("#addon-form"); }, form: true },
-  { name: "addons-edit-errors", path: "/admin/addons", ready: "إجمالي الإضافات", open: async () => {
+  { name: "addons", path: "/admin/addons", ready: "إضافة جديدة", table: true },
+  { name: "addons-form", path: "/admin/addons", ready: "إضافة جديدة", open: async () => { await clickText(page, "button", "إضافة جديدة"); await page.waitForSelector("#addon-form"); }, form: true },
+  { name: "addons-edit-errors", path: "/admin/addons", ready: "إضافة جديدة", open: async () => {
       await page.evaluate(() => [...document.querySelectorAll('button[aria-label^="تعديل"]')].find((b) => b.offsetParent).click());
       await page.waitForSelector("#addon-form");
       await page.click('#addon-form input[type="checkbox"]');
@@ -55,10 +55,10 @@ const states = [
       await page.evaluate(() => document.querySelector('button[form="addon-form"]').click());
       await sleep(300);
     }, form: true },
-  { name: "addons-delete", path: "/admin/addons", ready: "إجمالي الإضافات", open: async () => { await page.evaluate(() => [...document.querySelectorAll('button[aria-label^="حذف"]')].filter((b) => b.offsetParent)[1].click()); await page.waitForSelector('[role="dialog"]'); } },
-  { name: "orders", path: "/admin/orders", ready: "#1001", table: true, chips: true },
+  { name: "addons-delete", path: "/admin/addons", ready: "إضافة جديدة", open: async () => { await page.evaluate(() => [...document.querySelectorAll('button[aria-label^="حذف"]')].filter((b) => b.offsetParent)[1].click()); await page.waitForSelector('[role="dialog"]'); } },
+  { name: "orders", path: "/admin/orders", ready: "#1001", table: true, filterBar: true },
   { name: "orders-cancel", path: "/admin/orders", ready: "#1001", open: async () => {
-      const sel = await page.evaluateHandle(() => [...document.querySelectorAll("main select")].find((s) => s.offsetParent));
+      const sel = await page.evaluateHandle(() => [...document.querySelectorAll("main select:not([aria-label])")].find((s) => s.offsetParent));
       await sel.select("cancelled"); await page.waitForSelector('[role="dialog"]'); } },
   { name: "order-details", path: "/admin/orders/o_big", ready: "العميل" },
   { name: "prep", path: `/admin/orders?tab=prep&day=${d(1)}`, ready: "الإضافات", chips: true },
@@ -91,11 +91,32 @@ for (const w of WIDTHS) {
     if (!REDUCED && (w === 375 || w === 1280)) R.check(`${tag}: identical under prefers-color-scheme: dark`, await darkIdentical(page, { name: `${w}-${s.name}` }));
     if (s.table) R.check(`${tag}: ${w < 768 ? "cards" : "table"}`, w < 768 ? a.cardsVisible && !a.tableVisible : a.tableVisible && !a.cardsVisible);
     if (s.chips && w < 768) R.check(`${tag}: filters = horizontal chip rows`, a.chipRowsScroll.length > 0 && a.chipRowsScroll.every((o) => o === "auto"), a.chipRowsScroll.join());
+    if (s.filterBar) {
+      const fb = await page.evaluate(() => ({
+        selects: [...document.querySelectorAll("main select[aria-label]")].filter((e) => e.offsetParent).length,
+        button: [...document.querySelectorAll("main button")].some((b) => b.offsetParent && b.textContent.includes("فلتر")),
+        search: !!document.querySelector('main input[type="search"]')?.offsetParent,
+      }));
+      R.check(`${tag}: filters = ${w < 768 ? "search + فلتر button" : "search + one row of selects"}`, fb.search && (w < 768 ? fb.button && fb.selects === 0 : !fb.button && fb.selects === 6), JSON.stringify(fb));
+    }
     if (s.form) {
       const full = a.dialog && a.dialog.w >= a.dialog.vw - 1 && a.dialog.h >= a.dialog.vh - 1;
       R.check(`${tag}: form is ${w < 768 ? "full-screen" : "centered modal"}`, w < 768 ? full : a.dialog && !full, JSON.stringify(a.dialog));
     }
     if (w === 320 || w === 768 || w === 1280) await page.screenshot({ path: path.join(SHOTS, `${MODE}-${w}-${s.name}.png`) });
+    // الموبايل: شيت الفلاتر جوه الشاشة، والأزرار 44px+
+    if (s.filterBar && w < 768) {
+      await clickText(page, "main button", "فلتر");
+      await page.waitForSelector('[role="dialog"]');
+      await sleep(450);
+      const sh = await audit();
+      R.check(`${tag} filter sheet: no horizontal scroll, nothing off-screen`, !sh.hscroll && !sh.offscreen.length, [...sh.offscreen].slice(0, 3).join(" | "));
+      R.check(`${tag} filter sheet: tap targets >= 44px`, !sh.small.length, sh.small.slice(0, 4).join(" | "));
+      R.check(`${tag} filter sheet: apply + clear buttons`, await page.evaluate(() => { const t = [...document.querySelectorAll('[role="dialog"] button')].map((b) => b.textContent.trim()); return t.includes("تطبيق") && t.includes("مسح"); }));
+      if (w === 320) await page.screenshot({ path: path.join(SHOTS, `${MODE}-${w}-orders-filter-sheet.png`) });
+      await page.keyboard.press("Escape");
+      await sleep(300);
+    }
   }
 
   // الدرور (أقل من 1024) أو السايدبار
@@ -129,10 +150,10 @@ for (const w of WIDTHS) {
 // ── تباين النص في فورمات ومودالات الوجبات والمنيو (375 و 1280) ──
 const openFirst = (label) => page.evaluate((label) => [...document.querySelectorAll(`button[aria-label^="${label}"]`)].find((b) => b.offsetParent).click(), label);
 const contrastStates = [
-  ["meals page", "/admin/meals", "إجمالي الوجبات", null],
-  ["meal form (new)", "/admin/meals", "إجمالي الوجبات", async () => { await clickText(page, "button", "وجبة جديدة"); await page.waitForSelector("#meal-form"); }],
-  ["meal form (edit + errors)", "/admin/meals", "إجمالي الوجبات", async () => { await openFirst("تعديل"); await page.waitForSelector("#meal-form"); await page.click("#meal-form input", { clickCount: 3 }); await page.keyboard.press("Backspace"); await page.evaluate(() => document.querySelector('button[form="meal-form"]').click()); await sleep(300); }],
-  ["meal delete", "/admin/meals", "إجمالي الوجبات", async () => { await openFirst("حذف"); await page.waitForSelector('[role="dialog"]'); }],
+  ["meals page", "/admin/meals", "وجبة جديدة", null],
+  ["meal form (new)", "/admin/meals", "وجبة جديدة", async () => { await clickText(page, "button", "وجبة جديدة"); await page.waitForSelector("#meal-form"); }],
+  ["meal form (edit + errors)", "/admin/meals", "وجبة جديدة", async () => { await openFirst("تعديل"); await page.waitForSelector("#meal-form"); await page.click("#meal-form input", { clickCount: 3 }); await page.keyboard.press("Backspace"); await page.evaluate(() => document.querySelector('button[form="meal-form"]').click()); await sleep(300); }],
+  ["meal delete", "/admin/meals", "وجبة جديدة", async () => { await openFirst("حذف"); await page.waitForSelector('[role="dialog"]'); }],
   ["menu page", "/admin/menu", "المنيو الأسبوعي", null],
   ["menu add meal", "/admin/menu", "المنيو الأسبوعي", async () => { await clickText(page, "button", "إضافة وجبة"); await page.waitForSelector('[role="dialog"]'); }],
   ["menu copy day", "/admin/menu", "المنيو الأسبوعي", async () => { await clickText(page, "button", "نسخ يوم ليوم آخر"); await page.waitForSelector('[role="dialog"]'); }],
@@ -159,7 +180,7 @@ for (const w of [375, 1280]) {
 // ── الكيبورد على الموبايل: الحقل اللي بيتكتب فيه يفضل باين ──
 for (const w of [320, 375]) {
   for (const [label, open, sel] of [
-    ["addon price", async () => { await page.goto(BASE + "/admin/addons"); await waitText(page, "إجمالي الإضافات"); await clickText(page, "button", "إضافة جديدة"); await page.waitForSelector("#addon-form"); }, '#addon-form input[type="number"]'],
+    ["addon price", async () => { await page.goto(BASE + "/admin/addons"); await waitText(page, "إضافة جديدة"); await clickText(page, "button", "إضافة جديدة"); await page.waitForSelector("#addon-form"); }, '#addon-form input[type="number"]'],
     ["settings fee", async () => { await page.goto(BASE + "/admin/settings"); await waitText(page, "حفظ الإعدادات"); }, 'input[type="number"]'],
     ["orders search", async () => { await page.goto(BASE + "/admin/orders"); await waitText(page, "#1001"); }, 'input[type="search"]'],
   ]) {

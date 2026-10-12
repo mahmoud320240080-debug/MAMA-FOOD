@@ -353,8 +353,9 @@ await setLs(page, "mamafood:db:orders", [{ id: "o1", orderNumber: 1001, status: 
 await page.goto(BASE + "/admin/orders?q=zzzz");
 await checkLottie("no search results (admin orders)", '[data-lottie="noResults"]');
 await page.goto(BASE + "/admin/meals");
-await waitText(page, "إجمالي الوجبات");
-await page.type('main input[placeholder="بحث في الوجبات..."]', "zzzz");
+await waitText(page, "وجبة جديدة");
+await page.waitForSelector('main input[type="search"]');
+await page.type('main input[type="search"]', "zzzz");
 await checkLottie("no search results (admin meals)", '[data-lottie="noResults"]');
 await page.goto(BASE + "/admin/menu");
 await waitText(page, "المنيو الأسبوعي");

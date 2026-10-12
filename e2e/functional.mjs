@@ -77,7 +77,7 @@ const settings0 = await ls(page, "mamafood:db:settings");
 await page.waitForFunction(() => !document.querySelector('button[type="submit"]').disabled);
 await page.type('input[placeholder="اسمك الكامل"]', "أم محمد عبد الرحمن");
 await page.type('input[placeholder="01012345678"]', "01012345678");
-await page.type('input[placeholder="العنوان بالتفصيل"]', "15 شارع التحرير، الدقي، الجيزة");
+await page.type('input[placeholder="الشارع، رقم العمارة، الدور، أقرب علامة مميزة"]', "15 شارع التحرير، الدقي، الجيزة");
 await clickText(page, "button", "أكّد الطلب");
 await page.waitForFunction(() => location.pathname.startsWith("/order-success/"), { timeout: 8000 }).catch(async (e) => { console.log(await page.evaluate(() => document.body.innerText.slice(0, 1500))); await page.screenshot({ path: path.join(SHOTS, "fail.png"), fullPage: true }); throw e; });
 // اهتزاز: اختيار يومين + إضافتين من الشيت + "+" من الستيبر + تأكيد الطلب (ومع تقليل الحركة: ولا مرة)
@@ -87,8 +87,10 @@ const orders1 = await ls(page, "mamafood:db:orders");
 const order = orders1[0];
 const expSub = cart.items.reduce((s, it) => s + lineTotal(it), 0);
 R.check("checkout: order saved with cart items", JSON.stringify(order.items) === JSON.stringify(cart.items));
-R.check("checkout: totals = subtotal + settings deliveryFee", order.subtotal === expSub && order.deliveryFee === settings0.deliveryFee && order.totalPrice === expSub + settings0.deliveryFee,
+const area0 = settings0.deliveryAreas.find((a) => a.enabled);
+R.check("checkout: totals = subtotal + the area's delivery fee", order.subtotal === expSub && order.deliveryFee === area0.price && order.totalPrice === expSub + area0.price,
   `sub ${order.subtotal} fee ${order.deliveryFee} total ${order.totalPrice}`);
+R.check("checkout: the only area is picked automatically and stored on the order", order.deliveryArea?.id === area0.id && order.deliveryArea?.name === area0.name, JSON.stringify(order.deliveryArea));
 R.check("cash order unchanged: paymentMethod cash, payment not_required, success page", order.paymentMethod === "cash" && order.payment?.status === "not_required" && page.url().includes("/order-success/"), JSON.stringify({ m: order.paymentMethod, s: order.payment?.status }));
 
 // ───────────── الأدمن: الطلب ظاهر ─────────────
@@ -136,7 +138,8 @@ const typeSearch = async (q) => {
   await page.click('input[type="search"]', { clickCount: 3 });
   await page.keyboard.press("Backspace");
   if (q) await page.type('input[type="search"]', q);
-  await sleep(150);
+  await sleep(500); // البحث بيتبعت بعد ما الكتابة تهدى
+
   return nums(await rowTexts(page));
 };
 let r1 = await typeSearch("1010");
@@ -146,16 +149,16 @@ R.check("search by customer name", r1.join() === "1011", r1.join());
 r1 = await typeSearch("0150");
 R.check("search by phone", r1.join() === "1012", r1.join());
 await typeSearch("");
-await clickText(page, 'div[role="group"][aria-label="فلترة بالحالة"] button', "ملغي");
+await page.select('main select[aria-label="الحالة"]', "cancelled");
 await sleep(150);
 r1 = nums(await rowTexts(page));
 R.check("filter by status (ملغي)", r1.join() === "1012", r1.join());
-await clickText(page, 'div[role="group"][aria-label="فلترة بالحالة"] button', "كل الحالات");
-await clickText(page, 'div[role="group"][aria-label="فلترة باليوم المطلوب"] button', dayLabel(dates[1]));
+await page.select('main select[aria-label="الحالة"]', "");
+await page.select('main select[aria-label="اليوم المطلوب"]', dates[1]);
 await sleep(150);
 r1 = nums(await rowTexts(page));
 R.check("filter by requested day (item date, not createdAt)", r1.sort().join() === [order.orderNumber, 1011].sort().join(), `${dayLabel(dates[1])}: ${r1.join()}`);
-await clickText(page, 'div[role="group"][aria-label="فلترة بالحالة"] button', "في الطريق");
+await page.select('main select[aria-label="الحالة"]', "delivering");
 await sleep(150);
 r1 = nums(await rowTexts(page));
 R.check("status + day filters combine", r1.join() === "1011", r1.join());
@@ -167,6 +170,25 @@ R.check("filters survive refresh (URL params)", r1.join() === "1011" && page.url
 await clickText(page, "button", "مسح الفلاتر");
 await sleep(150);
 R.check("clear filters", (await rowTexts(page)).length === 4);
+
+// المنطقة: بحث باسمها، وفلتر "من غير منطقة" للطلبات القديمة، والترتيب بالأعلى قيمة
+r1 = await typeSearch("كل المناطق");
+R.check("search by delivery area name", r1.join() === String(order.orderNumber), r1.join());
+await typeSearch("");
+await page.select('main select[aria-label="المنطقة"]', "none");
+await sleep(150);
+r1 = nums(await rowTexts(page));
+R.check("filter by area: old orders without an area", r1.slice().sort().join() === "1010,1011,1012", r1.join());
+await page.select('main select[aria-label="المنطقة"]', "");
+await page.select('main select[aria-label="الترتيب"]', "highest");
+await sleep(150);
+r1 = nums(await rowTexts(page));
+const totalOf = Object.fromEntries((await ls(page, "mamafood:db:orders")).map((o) => [String(o.orderNumber), o.totalPrice]));
+R.check("sort by highest total", r1.length === 4 && r1.every((n, k) => k === 0 || totalOf[r1[k - 1]] >= totalOf[n]), r1.map((n) => `${n}:${totalOf[n]}`).join(" "));
+R.check("sort kept in the URL", page.url().includes("sort=highest"), page.url());
+await clickText(page, "button", "مسح الفلاتر");
+await sleep(150);
+R.check("clear filters resets the sort", !page.url().includes("sort=") && nums(await rowTexts(page)).join(",") === [order.orderNumber, 1012, 1010, 1011].join(","));
 
 // ───────────── 4) تفاصيل الطلب ─────────────
 await page.evaluate((n) => [...document.querySelectorAll("table tbody tr")].find((r) => r.innerText.includes(`#${n}`)).click(), order.orderNumber);
@@ -275,7 +297,8 @@ for (const d of dates) {
 
 // ───────────── 6) الإضافات: إنشاء / تعديل / حذف ─────────────
 await page.goto(BASE + "/admin/addons");
-await waitText(page, "إجمالي الإضافات");
+await waitText(page, "إضافة جديدة");
+await page.waitForSelector('main input[type="search"]');
 await clickText(page, "button", "إضافة جديدة");
 await page.waitForSelector("#addon-form");
 await page.evaluate(() => document.querySelector('button[form="addon-form"]').click());
@@ -348,11 +371,14 @@ R.check("settings helper line + live example", helper.includes("كل يوم بي
 await clickText(page, "button", "حفظ الإعدادات");
 await waitText(page, "تم حفظ الإعدادات");
 let st = await ls(page, "mamafood:db:settings");
-R.check("settings saved", st.cutoffMode === "day_before" && st.orderCutoffHour === 0 && st.deliveryFee === 35, JSON.stringify(st));
+R.check("settings saved", st.cutoffMode === "day_before" && st.orderCutoffHour === 0 && st.deliveryAreas?.[0]?.price === 35 && !("deliveryFee" in st), JSON.stringify(st));
 const chipsDisabled = async () => {
   await page.goto(BASE + "/");
   await page.waitForSelector("button[aria-pressed]");
-  return page.$$eval("button[aria-pressed]", (bs) => bs.map((b) => b.disabled));
+  const disabled = await page.$$eval("button[aria-pressed]", (bs) => bs.map((b) => b.disabled));
+  // الرئيسية بتنضّف السلة مرة بعد ما الأيام تتحمّل: نستنى قبل ما الاختبار يكتب سلة جديدة عشان ما تتكتبش فوقها
+  await sleep(600);
+  return disabled;
 };
 let cd = await chipsDisabled();
 R.check("customer: day_before 12 ص locks today and tomorrow", cd[0] && cd[1] && !cd[2], JSON.stringify(cd.slice(0, 3)));
@@ -371,7 +397,7 @@ R.check("customer: same_day 11 م keeps today open until 11 م, tomorrow open", 
 const cartItem = { ...order.items[1], date: dates[1] };
 await setLs(page, "mamafood:cart", { state: { selectedDates: [dates[1]], items: [cartItem], customer: order.customer }, version: 0 });
 await page.goto(BASE + "/checkout");
-await page.waitForFunction(() => !document.querySelector('button[type="submit"]').disabled);
+await page.waitForSelector('button[type="submit"]:not([disabled])', { timeout: 8000 });
 const coText = await page.$eval("main", (m) => m.innerText).catch(() => page.$eval("body", (b) => b.innerText));
 const expTotal = lineTotal(cartItem) + 35;
 R.check("checkout shows new delivery fee 35 + total", coText.includes(price(35)) && coText.includes(price(expTotal)), `expected total ${expTotal}`);
@@ -379,6 +405,51 @@ await clickText(page, "button", "أكّد الطلب");
 await page.waitForFunction(() => location.pathname.startsWith("/order-success/"), { timeout: 8000 });
 const o2 = (await ls(page, "mamafood:db:orders"))[0];
 R.check("new order stored with deliveryFee 35", o2.deliveryFee === 35 && o2.totalPrice === expTotal, JSON.stringify({ fee: o2.deliveryFee, total: o2.totalPrice }));
+
+// ───────────── 7a) مناطق التوصيل: آخر منطقة مفعّلة محمية، منطقة جديدة بسعر، والزبون بيختار العنوان ─────────────
+await page.goto(BASE + "/admin/settings");
+await page.waitForSelector('input[name="deliveryAreas.0.enabled"]');
+await clickText(page, "label", "مفعّلة");
+await waitText(page, "لازم تفضل منطقة واحدة مفعّلة على الأقل");
+R.check("settings: the last enabled area can't be turned off", await page.$eval('input[name="deliveryAreas.0.enabled"]', (i) => i.checked));
+await clickText(page, "button", "إضافة منطقة");
+await page.waitForSelector('input[name="deliveryAreas.1.name"]');
+R.check("settings: new area row focuses its name", await page.evaluate(() => document.activeElement?.name === "deliveryAreas.1.name"));
+await clickText(page, "button", "حفظ الإعدادات");
+await waitText(page, "اكتب اسم المنطقة");
+await page.type('input[name="deliveryAreas.1.name"]', "كل المناطق");
+await page.type('input[name="deliveryAreas.1.price"]', "0");
+await clickText(page, "button", "حفظ الإعدادات");
+await waitText(page, "الاسم ده متكرر");
+R.check("settings: area validation (name required, unique)", true);
+await page.click('input[name="deliveryAreas.1.name"]', { clickCount: 3 });
+await page.type('input[name="deliveryAreas.1.name"]', "المعادي");
+await clickText(page, "button", "حفظ الإعدادات");
+await waitText(page, "تم حفظ الإعدادات");
+st = await ls(page, "mamafood:db:settings");
+const areaMaadi = st.deliveryAreas.find((a) => a.name === "المعادي");
+R.check("settings: new area saved (2 enabled areas)", st.deliveryAreas.length === 2 && areaMaadi?.price === 0 && areaMaadi.enabled, JSON.stringify(st.deliveryAreas));
+
+await setLs(page, "mamafood:cart", { state: { selectedDates: [dates[1]], items: [cartItem], customer: { ...order.customer, deliveryAreaId: "" } }, version: 0 });
+await page.goto(BASE + "/checkout");
+await page.waitForSelector("#deliveryAreaId");
+const areaOpts = await page.$$eval("#deliveryAreaId option", (os) => os.map((o) => o.textContent));
+R.check("checkout: العنوان lists enabled areas with their fee", areaOpts.join("|") === `اختار العنوان|كل المناطق — ${price(35)}|المعادي — توصيل مجاني`, areaOpts.join("|"));
+R.check("checkout: summary asks to choose العنوان before an area is picked", (await page.$eval("main", (m) => m.innerText)).includes("اختار العنوان"));
+await clickText(page, "button", "أكّد الطلب");
+await waitText(page, "اختار العنوان");
+await sleep(500);
+R.check("checkout: submit blocked without an area", new URL(page.url()).pathname === "/checkout" && (await ls(page, "mamafood:db:orders"))[0].id === o2.id);
+await page.select("#deliveryAreaId", areaMaadi.id);
+await sleep(200);
+const coArea = await page.$eval("main", (m) => m.innerText);
+R.check("checkout: free area shows توصيل مجاني + total without delivery", coArea.includes("التوصيل (المعادي)") && coArea.includes("توصيل مجاني") && coArea.includes(price(lineTotal(cartItem))));
+await clickText(page, "button", "أكّد الطلب");
+await page.waitForFunction(() => location.pathname.startsWith("/order-success/"), { timeout: 8000 });
+const o3 = (await ls(page, "mamafood:db:orders"))[0];
+R.check("order stores the area snapshot and its fee", o3.deliveryArea?.id === areaMaadi.id && o3.deliveryArea?.name === "المعادي" && o3.deliveryFee === 0 && o3.totalPrice === lineTotal(cartItem), JSON.stringify({ area: o3.deliveryArea, fee: o3.deliveryFee, total: o3.totalPrice }));
+await waitText(page, "بيانات التوصيل");
+R.check("success page shows the area", (await page.$eval("main", (m) => m.innerText)).includes("المعادي"));
 
 // ───────────── 7b) فودافون كاش: تفعيل => صورة التحويل إجبارية في صفحة الطلب => الطلب يتعمل معاها، والأدمن بيشوف الصورة بس ─────────────
 await page.goto(BASE + "/admin/settings");
@@ -388,7 +459,7 @@ await page.type('input[placeholder="01XXXXXXXXX"]', "01012345678");
 await clickText(page, "button", "حفظ الإعدادات");
 await waitText(page, "تم حفظ الإعدادات");
 R.check("settings: Vodafone Cash enabled", (await ls(page, "mamafood:db:settings")).payments?.vodafoneCash?.enabled === true);
-await setLs(page, "mamafood:cart", { state: { selectedDates: [dates[1]], items: [cartItem], customer: order.customer, paymentMethod: "cash" }, version: 0 });
+await setLs(page, "mamafood:cart", { state: { selectedDates: [dates[1]], items: [cartItem], customer: { ...order.customer, deliveryAreaId: areaMaadi.id }, paymentMethod: "cash" }, version: 0 });
 await page.goto(BASE + "/checkout");
 await page.waitForFunction(() => document.querySelectorAll('input[name="paymentMethod"]').length === 2 && !document.querySelector('button[type="submit"]').disabled);
 await page.evaluate(() => document.querySelector('input[name="paymentMethod"][value="vodafone_cash"]').closest("label").click());
@@ -454,7 +525,7 @@ await page.goto(BASE + "/admin/addons"); await waitText(page, "لسه مفيش �
 R.check("empty: addons", true);
 await setLs(page, "mamafood:db:orders", backup.orders);
 await setLs(page, "mamafood:db:addons", backup.addons);
-await page.goto(BASE + "/admin/orders?q=zzzz"); await waitText(page, "مفيش طلبات مطابقة");
+await page.goto(BASE + "/admin/orders?q=zzzz"); await waitText(page, "مفيش نتايج");
 R.check("empty: no matching orders", true);
 await page.goto(BASE + "/admin/orders/o_doesnotexist"); await waitText(page, "تعذر تحميل الطلب", 8000);
 R.check("error: order not found", true);
