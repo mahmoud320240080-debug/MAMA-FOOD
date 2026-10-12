@@ -61,10 +61,7 @@ const cleanAreas = (areas) => {
 
 export const menuApi = {
   /** القالب الأسبوعي الثابت: { sun: [mealId], mon: [...], ... } */
-  getWeekly: () => (USE_MOCK ? simulate(readMenu) : http("/menu/weekly")),
   getWeeklyMenu: () => (USE_MOCK ? simulate(readMenu) : http("/menu/weekly")),
-  saveWeekly: (menu) =>
-    USE_MOCK ? simulate(() => db.write("weeklyMenu", menu)) : http("/admin/menu/weekly", { method: "PUT", body: menu }),
   updateWeeklyMenu: (menu) =>
     USE_MOCK ? simulate(() => db.write("weeklyMenu", menu)) : http("/admin/menu/weekly", { method: "PUT", body: menu }),
 

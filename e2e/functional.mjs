@@ -189,7 +189,7 @@ R.check("details: back link returns to list", true);
 
 // ───────────── 4b) الكانبان والإجراءات الجماعية ─────────────
 // 1. التبديل للكانبان
-await clickText(page, "button", "كانبان");
+await clickText(page, "button", "لوحة");
 await sleep(400);
 const kanbanCols = await page.evaluate(() => [...document.querySelectorAll("h3")].map((h) => h.innerText));
 R.check("kanban: 5 status columns present", ["جديد", "بيتحضر", "في الطريق", "تم التسليم", "ملغي"].every((s) => kanbanCols.includes(s)), kanbanCols.join(" | "));

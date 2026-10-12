@@ -80,5 +80,4 @@
 /* الطباعة (تيكت الطلب في الأدمن) */
 @media print {
   body { background: #fff; }
-  .no-print { display: none !important; }
 }

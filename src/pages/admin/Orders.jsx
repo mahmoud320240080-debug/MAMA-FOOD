@@ -359,7 +359,7 @@ export default function Orders() {
               )}
             >
               <LayoutGrid className="h-4 w-4" aria-hidden />
-              <span>كانبان</span>
+              <span>لوحة</span>
             </button>
           </div>
         )}

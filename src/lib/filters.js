@@ -110,7 +110,3 @@ export const filterAddons = (addons, { q, price } = {}) => {
     (!price || (price === "free" ? Number(a.price) === 0 : Number(a.price) > 0))
     && (!text || includesText(text, a.name)));
 };
-
-/** عدد الفلاتر الشغالة (القيمة غير الافتراضية) — defaults: { key: defaultValue } */
-export const countActiveFilters = (values, defaults) =>
-  Object.entries(defaults).filter(([key, def]) => (values[key] ?? def) !== def).length;

@@ -62,17 +62,9 @@ export function buildWhatsAppMessage({ items = [], customer = {}, deliveryFee = 
  * بناء رابط واتساب باستخدام WHATSAPP_NUMBER
  */
 export function whatsappUrl(params, number = WHATSAPP_NUMBER) {
-  // دعم الاستدعاء كـ (number, params) أو (params)
-  if (typeof params === "string") {
-    const targetNumber = params;
-    const text = buildWhatsAppMessage(number || {});
-    return `https://wa.me/${targetNumber}?text=${encodeURIComponent(text)}`;
-  }
   const text = buildWhatsAppMessage(params || {});
   return `https://wa.me/${number}?text=${encodeURIComponent(text)}`;
 }
-
-export const buildWhatsAppUrl = whatsappUrl;
 
 /** موبايل مصري 01XXXXXXXXX => 201XXXXXXXXX (الصيغة اللي wa.me محتاجها) */
 export function toWhatsAppNumber(phone = "") {

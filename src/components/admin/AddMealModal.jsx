@@ -12,9 +12,7 @@ import { toast } from "@/store/useToastStore";
 import { cn } from "@/lib/cn";
 import { withLam } from "@/lib/dates";
 import { filterMeals, mealCategoryOptions } from "@/lib/filters";
-
-// الفوكس على البحث في الديسكتوب بس (في الموبايل الكيبورد كان بيفتح ويغطي القايمة)
-const isDesktop = () => typeof window !== "undefined" && window.matchMedia?.("(min-width: 768px)").matches;
+import { useIsDesktop } from "@/hooks/useMediaQuery";
 
 export default function AddMealModal({
   open,
@@ -27,7 +25,8 @@ export default function AddMealModal({
   const meals = useAdminMenuStore((s) => s.meals);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
-  const [autoFocus] = useState(isDesktop);
+  // الفوكس على البحث في الديسكتوب بس (في الموبايل الكيبورد كان بيفتح ويغطي القايمة)
+  const autoFocus = useIsDesktop();
 
   const categories = useMemo(() => mealCategoryOptions(meals, MEAL_CATEGORIES), [meals]);
   const filteredMeals = useMemo(() => filterMeals(meals, { q: search, category }), [meals, search, category]);
