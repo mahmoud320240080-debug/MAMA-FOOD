@@ -1,3 +1,4 @@
+import { CalendarDays, StickyNote } from "lucide-react";
 import { formatPrice } from "@/lib/format";
 import { formatDayMonth } from "@/lib/dates";
 import { groupItemsByDate, daySubtotal, lineTotal, cartSubtotal } from "@/lib/cart";
@@ -18,7 +19,10 @@ export default function OrderSummary({ items, deliveryFee = 0, collapsible = fal
         return (
           <div key={date}>
             <div className="mb-1.5 flex items-center justify-between">
-              <h4 className="font-bold">📅 {formatDayMonth(date)}</h4>
+              <h4 className="flex items-center gap-1.5 font-bold">
+                <CalendarDays className="h-[18px] w-[18px] shrink-0 text-brand-red" aria-hidden />
+                {formatDayMonth(date)}
+              </h4>
               <span className="text-sm font-semibold text-ink-soft">
                 {formatPrice(daySubtotal(dayItems))}
               </span>
@@ -38,7 +42,10 @@ export default function OrderSummary({ items, deliveryFee = 0, collapsible = fal
                       </p>
                     )}
                     {item.note && (
-                      <p className="text-xs text-ink-soft truncate">📝 {item.note}</p>
+                      <p className="flex items-center gap-1 text-xs text-ink-soft">
+                        <StickyNote className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                        <span className="min-w-0 truncate">{item.note}</span>
+                      </p>
                     )}
                   </div>
                   <span className="shrink-0 font-semibold">

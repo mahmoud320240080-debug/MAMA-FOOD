@@ -18,6 +18,7 @@ import { formatDayLabel } from "@/lib/dates";
 import { formatPrice, formatTimeAgo } from "@/lib/format";
 import { toast } from "@/store/useToastStore";
 import BottomSheet from "@/components/common/BottomSheet";
+import { PaymentChip } from "@/components/common/PaymentBadges";
 import Button from "@/components/common/Button";
 import { cn } from "@/lib/cn";
 
@@ -82,7 +83,10 @@ function KanbanOrderCard({ order, isDragging = false, onClick, onOpenStatusSheet
         </p>
       </div>
 
-      {/* الأيام المطلوبة */}
+      {/* الدفع + الأيام المطلوبة */}
+      <div className="flex flex-wrap items-center gap-1">
+        <PaymentChip order={order} />
+      </div>
       <DayPills order={order} />
 
       {/* الفوتر: عدد الأصناف + السعر الإجمالي */}

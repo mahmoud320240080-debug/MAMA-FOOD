@@ -33,7 +33,7 @@ export default function DayChip({
       disabled={disabled}
       aria-pressed={selected}
       className={cn(
-        "group relative flex w-40 shrink-0 snap-start flex-col overflow-hidden rounded-3xl border-2 text-start transition-[background-color,border-color,box-shadow,color,opacity]",
+        "group relative flex w-40 shrink-0 snap-start flex-col items-center overflow-hidden rounded-3xl border-2 px-3 pb-3 pt-5 text-center xl:px-2 transition-[background-color,border-color,box-shadow,color,opacity]",
         "sm:w-44 md:w-auto",
         disabled
           ? "cursor-not-allowed border-ink/10 opacity-55"
@@ -42,50 +42,52 @@ export default function DayChip({
             : "border-ink/10 bg-white hover:border-brand-red hover:shadow-soft"
       )}
     >
-      {/* الهيدر */}
-      <div className="px-4 pb-2 pt-4 xl:px-3">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-lg font-bold">{day.dayName}</h3>
-          {selected && !disabled && (
-            <span className="grid h-6 w-6 place-items-center rounded-full bg-white text-brand-red">
-              <Check className="h-4 w-4" strokeWidth={3} aria-hidden />
-            </span>
-          )}
-          {closed && (
-            <Lock className="h-4 w-4 shrink-0 text-ink-soft" aria-hidden />
-          )}
-        </div>
-        <p
-          className={cn(
-            "text-sm",
-            selected && !disabled ? "text-white/80" : "text-ink-soft"
-          )}
-        >
-          {formatDayMonth(day.date)}
-        </p>
-      </div>
+      {/* أيقونة الحالة في الركن (برّه مجرى النص عشان المحتوى يفضل في النص بالظبط) */}
+      {selected && !disabled && (
+        <span className="absolute start-2.5 top-2.5 grid h-6 w-6 place-items-center rounded-full bg-white text-brand-red">
+          <Check className="h-4 w-4" strokeWidth={3} aria-hidden />
+        </span>
+      )}
+      {closed && (
+        <span className="absolute start-2.5 top-2.5 grid h-6 w-6 place-items-center text-ink-soft">
+          <Lock className="h-4 w-4" aria-hidden />
+        </span>
+      )}
 
-      {/* محتوى */}
-      <div className="flex flex-1 flex-col items-start gap-2 px-4 pb-4 pt-1 xl:px-3">
+      <h3 className="text-lg font-extrabold leading-tight">{day.dayName}</h3>
+      <p
+        className={cn(
+          "mt-1 text-sm",
+          selected && !disabled ? "text-white/80" : "text-ink-soft"
+        )}
+      >
+        {formatDayMonth(day.date)}
+      </p>
+
+      {/* مكان ثابت لبادج "النهارده" في كل الكروت، عشان عدد الوجبات والبيل يقفوا على نفس الخط */}
+      <div className="mt-2 flex h-6 items-center justify-center">
         {day.isToday && (
           <span className="rounded-full bg-ink px-2.5 py-0.5 text-xs font-bold text-white">النهارده</span>
         )}
-        {noMeals ? (
-          <p className="text-sm text-ink-soft">مفيش وجبات في اليوم ده</p>
-        ) : (
-          <p
-            className={cn(
-              "text-sm font-semibold",
-              selected && !disabled ? "text-brand-yellow" : "text-brand-red"
-            )}
-          >
-            {day.meals.length} وجبة
-          </p>
-        )}
+      </div>
 
+      {noMeals ? (
+        <p className="mt-1 text-sm text-ink-soft">مفيش وجبات في اليوم ده</p>
+      ) : (
+        <p
+          className={cn(
+            "mt-1 text-sm font-bold",
+            selected && !disabled ? "text-brand-yellow" : "text-brand-red"
+          )}
+        >
+          {day.meals.length} وجبة
+        </p>
+      )}
+
+      {/* البيل تحت خالص بعرض الكارت */}
+      <div className="mt-auto w-full pt-3">
         {closed ? (
-          <span className="mt-auto inline-flex items-center gap-1.5 rounded-full bg-ink/10 px-3 py-1 text-xs font-semibold text-ink-soft">
-            <Lock className="h-3.5 w-3.5" aria-hidden />
+          <span className="flex min-h-12 w-full items-center justify-center rounded-2xl bg-ink/10 px-2.5 py-2 text-xs font-semibold text-ink-soft">
             مقفول
           </span>
         ) : (
@@ -93,10 +95,8 @@ export default function DayChip({
             <CountdownBadge
               closesAt={day.closesAt}
               block
-              className={cn(
-                "mt-auto",
-                selected && "bg-white/20 text-white"
-              )}
+              shortMinutes
+              className={cn(selected && "bg-white/20 text-white")}
             />
           )
         )}

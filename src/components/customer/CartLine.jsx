@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react";
+import { StickyNote, Trash2 } from "lucide-react";
 import { formatPrice } from "@/lib/format";
 import { lineTotal } from "@/lib/cart";
 import { useCartStore } from "@/store/useCartStore";
@@ -21,7 +21,10 @@ export default function CartLine({ item }) {
           </p>
         )}
         {item.note && (
-          <p className="mt-0.5 text-xs text-ink-soft truncate">📝 {item.note}</p>
+          <p className="mt-0.5 flex items-center gap-1 text-xs text-ink-soft">
+            <StickyNote className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0 truncate">{item.note}</span>
+          </p>
         )}
         <p className="mt-1 text-sm font-bold text-brand-red">
           {formatPrice(lineTotal(item))}

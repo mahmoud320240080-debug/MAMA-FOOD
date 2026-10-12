@@ -1,4 +1,5 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { stubVibrate, applyMotionPref, REDUCED } from "./lib.mjs";
 import { BASE, SHOTS, launch, watchConsole, sleep, clickText, waitText, ls, setLs, adminLogin, dayLabel, price, Report } from "./lib.mjs";
 
@@ -88,6 +89,7 @@ const expSub = cart.items.reduce((s, it) => s + lineTotal(it), 0);
 R.check("checkout: order saved with cart items", JSON.stringify(order.items) === JSON.stringify(cart.items));
 R.check("checkout: totals = subtotal + settings deliveryFee", order.subtotal === expSub && order.deliveryFee === settings0.deliveryFee && order.totalPrice === expSub + settings0.deliveryFee,
   `sub ${order.subtotal} fee ${order.deliveryFee} total ${order.totalPrice}`);
+R.check("cash order unchanged: paymentMethod cash, payment not_required, success page", order.paymentMethod === "cash" && order.payment?.status === "not_required" && page.url().includes("/order-success/"), JSON.stringify({ m: order.paymentMethod, s: order.payment?.status }));
 
 // ───────────── الأدمن: الطلب ظاهر ─────────────
 await adminLogin(page);
@@ -158,7 +160,8 @@ await sleep(150);
 r1 = nums(await rowTexts(page));
 R.check("status + day filters combine", r1.join() === "1011", r1.join());
 await page.reload();
-await sleep(500);
+// نستنى الصفوف نفسها بدل وقت ثابت (وقت التحميل بعد الريفريش بيختلف)
+await page.waitForFunction(() => document.querySelectorAll("table tbody tr").length > 0, { timeout: 8000 }).catch(() => {});
 r1 = nums(await rowTexts(page));
 R.check("filters survive refresh (URL params)", r1.join() === "1011" && page.url().includes("status=delivering"), page.url());
 await clickText(page, "button", "مسح الفلاتر");
@@ -376,6 +379,56 @@ await clickText(page, "button", "أكّد الطلب");
 await page.waitForFunction(() => location.pathname.startsWith("/order-success/"), { timeout: 8000 });
 const o2 = (await ls(page, "mamafood:db:orders"))[0];
 R.check("new order stored with deliveryFee 35", o2.deliveryFee === 35 && o2.totalPrice === expTotal, JSON.stringify({ fee: o2.deliveryFee, total: o2.totalPrice }));
+
+// ───────────── 7b) فودافون كاش: تفعيل => صورة التحويل إجبارية في صفحة الطلب => الطلب يتعمل معاها، والأدمن بيشوف الصورة بس ─────────────
+await page.goto(BASE + "/admin/settings");
+await page.waitForSelector('input[role="switch"]');
+await clickText(page, "label", "تفعيل فودافون كاش");
+await page.type('input[placeholder="01XXXXXXXXX"]', "01012345678");
+await clickText(page, "button", "حفظ الإعدادات");
+await waitText(page, "تم حفظ الإعدادات");
+R.check("settings: Vodafone Cash enabled", (await ls(page, "mamafood:db:settings")).payments?.vodafoneCash?.enabled === true);
+await setLs(page, "mamafood:cart", { state: { selectedDates: [dates[1]], items: [cartItem], customer: order.customer, paymentMethod: "cash" }, version: 0 });
+await page.goto(BASE + "/checkout");
+await page.waitForFunction(() => document.querySelectorAll('input[name="paymentMethod"]').length === 2 && !document.querySelector('button[type="submit"]').disabled);
+await page.evaluate(() => document.querySelector('input[name="paymentMethod"][value="vodafone_cash"]').closest("label").click());
+await waitText(page, "حوّل المبلغ وارفع صورة التحويل");
+R.check("VC checkout: transfer box with the wallet number", await page.evaluate(() => [...document.querySelectorAll("main bdi")].some((b) => b.textContent === "01012345678")));
+// من غير صورة: التأكيد ممنوع برسالة، ومفيش طلب بيتعمل
+const ordersBeforeVc = (await ls(page, "mamafood:db:orders")).length;
+await clickText(page, "button", "أكّد الطلب");
+await waitText(page, "ارفع صورة التحويل عشان تكمّل");
+await sleep(800);
+R.check("VC checkout: submit blocked without screenshot (no order created)", new URL(page.url()).pathname === "/checkout" && (await ls(page, "mamafood:db:orders")).length === ordersBeforeVc);
+const proofPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../src/assets/pattern.jpg");
+await (await page.$('main input[type="file"]')).uploadFile(proofPath);
+await waitText(page, "تغيير الصورة");
+await clickText(page, "button", "أكّد الطلب");
+// الطلب والصورة مع بعض => صفحة تأكيد الطلب الكاملة بتاعة الكاش (بالتفاصيل وسطر الدفع)
+await page.waitForFunction(() => location.pathname.startsWith("/order-success/"), { timeout: 10000 });
+const vcOrderId = page.url().split("/").pop();
+await waitText(page, "بيانات التوصيل", 8000);
+const successText = await page.evaluate(() => document.querySelector("main").innerText);
+R.check("customer: lands on the full order success page with details + payment row", successText.includes("تم تأكيد طلبك!") && successText.includes("الإجمالي") && successText.includes("فودافون كاش") && successText.includes("وصل الإيصال") && !successText.includes("ارفع صورة التحويل"));
+R.check("customer: no payment-confirmation wording", !(await page.evaluate(() => document.body.innerText.includes("تأكيد الدفع"))));
+const vcOrder = (await ls(page, "mamafood:db:orders")).find((o) => o.id === vcOrderId);
+R.check("VC order: created with its proof => confirmed (image stored outside orders)", vcOrder.payment.status === "confirmed" && !!vcOrder.payment.proofUploadedAt && !JSON.stringify(vcOrder).includes("data:image") && !!(await ls(page, "mamafood:db:paymentProofs"))[vcOrderId], vcOrder.payment.status);
+// لينك صفحة الدفع القديمة => صفحة تأكيد الطلب
+await page.goto(`${BASE}/payment/${vcOrderId}`);
+await page.waitForFunction((id) => location.pathname === `/order-success/${id}`, { timeout: 8000 }, vcOrderId);
+R.check("old /payment/:id link redirects to the order success page", true);
+await page.goto(`${BASE}/admin/orders/${vcOrderId}`);
+await page.waitForSelector('button[aria-label="عرض صورة الإيصال بحجم كبير"] img');
+const adminCard = await page.evaluate(() => ({
+  text: document.querySelector("main").innerText,
+  buttons: [...document.querySelectorAll("main button")].map((b) => b.textContent.trim()),
+}));
+R.check("admin: screenshot + 'وصل الإيصال' badge shown", adminCard.text.includes("وصل الإيصال"));
+R.check("admin: no approve/reject buttons", !adminCard.buttons.some((t) => /تأكيد الدفع|رفض الإيصال|إعادة المراجعة/.test(t)) && !adminCard.text.includes("تأكيد الدفع"), adminCard.buttons.join(" | "));
+await page.goto(BASE + "/admin/orders");
+await waitText(page, "وصل الإيصال");
+R.check("admin orders: no 'مستني إيصال' anywhere", !(await page.evaluate(() => document.body.innerText.includes("مستني إيصال"))));
+
 // رجّع الإعدادات
 await setLs(page, "mamafood:db:settings", { cutoffMode: "same_day", orderCutoffHour: 12, deliveryFee: 20 });
 

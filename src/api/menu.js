@@ -4,19 +4,43 @@ import { db, simulate } from "./mockDb";
 import { seedWeeklyMenu, seedMeals, seedAddons, seedSettings } from "./seed";
 import { UPCOMING_DAYS_COUNT } from "@/lib/constants";
 import { getDayLockTime, getToday, getUpcomingDates, isDayLocked } from "@/lib/dates";
+import { validatePaymentSettings } from "@/lib/payments";
 
 const readMenu = () => db.read("weeklyMenu", seedWeeklyMenu);
 
 /**
  * إعدادات الموك (الطلبات والمنيو بيقروا منها). ترحيل التثبيتات القديمة:
- * مفيش cutoffMode = القاعدة القديمة (orderCutoffHour كان ساعة اليوم اللي قبله، 22 مثلاً)،
- * فبناخد الافتراضي الجديد (نفس اليوم الساعة 12) بدل ما نقرا 22 كساعة في نفس اليوم. رسوم التوصيل بتفضل زي ما هي.
+ * - مفيش cutoffMode = القاعدة القديمة (orderCutoffHour كان ساعة اليوم اللي قبله، 22 مثلاً)،
+ *   فبناخد الافتراضي الجديد (نفس اليوم الساعة 12) بدل ما نقرا 22 كساعة في نفس اليوم.
+ * - مفيش payments (أو ناقص منها حاجة) = الافتراضي: الدفع الإلكتروني مقفول ومن غير أرقام.
+ * رسوم التوصيل وميعاد القفل المتخزنين بيفضلوا زي ما هم.
  */
 export const readSettings = () => {
   const stored = db.read("settings", seedSettings);
-  if (stored.cutoffMode) return stored;
-  const { cutoffMode, orderCutoffHour } = seedSettings();
-  return db.write("settings", { ...stored, cutoffMode, orderCutoffHour });
+  const seed = seedSettings();
+  const lock = stored.cutoffMode ? {} : { cutoffMode: seed.cutoffMode, orderCutoffHour: seed.orderCutoffHour };
+  const p = stored.payments || {};
+  const payments = {
+    ...seed.payments,
+    ...p,
+    vodafoneCash: { ...seed.payments.vodafoneCash, ...p.vodafoneCash },
+    instapay: { ...seed.payments.instapay, ...p.instapay },
+  };
+  const next = { ...stored, ...lock, payments };
+  return JSON.stringify(next) === JSON.stringify(stored) ? stored : db.write("settings", next);
+};
+
+/** تنضيف إعدادات الدفع قبل الحفظ (trim) + نفس التحقق اللي في صفحة الإعدادات */
+const cleanPayments = (payments) => {
+  const trim = (v) => String(v ?? "").trim();
+  const clean = {
+    vodafoneCash: { enabled: !!payments.vodafoneCash?.enabled, number: trim(payments.vodafoneCash?.number), accountName: trim(payments.vodafoneCash?.accountName) },
+    instapay: { enabled: !!payments.instapay?.enabled, handle: trim(payments.instapay?.handle), accountName: trim(payments.instapay?.accountName) },
+    instructions: trim(payments.instructions),
+  };
+  const errors = Object.values(validatePaymentSettings(clean));
+  if (errors.length) throw new Error(errors[0]);
+  return clean;
 };
 
 export const menuApi = {
@@ -30,7 +54,9 @@ export const menuApi = {
 
   getSettings: () => (USE_MOCK ? simulate(readSettings) : http("/settings")),
   saveSettings: (s) =>
-    USE_MOCK ? simulate(() => db.write("settings", { ...readSettings(), ...s })) : http("/admin/settings", { method: "PUT", body: s }),
+    USE_MOCK
+      ? simulate(() => db.write("settings", { ...readSettings(), ...s, ...(s.payments ? { payments: cleanPayments(s.payments) } : {}) }))
+      : http("/admin/settings", { method: "PUT", body: s }),
 
   /**
    * النهارده + الـ 7 أيام الجاية (من بكره) مع وجباتها وإضافاتها وميعاد قفلها.

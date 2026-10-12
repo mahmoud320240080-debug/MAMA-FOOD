@@ -14,11 +14,18 @@ import OrderStatusSelect from "@/components/admin/OrderStatusSelect";
 import PrepSummary from "@/components/admin/PrepSummary";
 import OrdersKanban from "@/components/admin/OrdersKanban";
 import { EmptyState, PageError } from "@/components/admin/PageState";
+import { PaymentChip } from "@/components/common/PaymentBadges";
 import { ORDER_STATUS } from "@/lib/constants";
 import { formatDayLabel } from "@/lib/dates";
 import { formatDateTime, formatPrice } from "@/lib/format";
 import { toast } from "@/store/useToastStore";
 import { cn } from "@/lib/cn";
+
+/** فلتر الدفع: كاش أو تحويل (الإيصال بيترفع مع الطلب فبيبقى "وصل الإيصال" دايماً) */
+const PAYMENT_FILTERS = [
+  { value: "cash", label: "كاش" },
+  { value: "confirmed", label: "وصل الإيصال" },
+];
 
 const TABS = [
   { key: "list", label: "كل الطلبات" },
@@ -57,7 +64,9 @@ export default function Orders() {
   const q = params.get("q") || "";
   const status = params.get("status") || "";
   const date = params.get("date") || "";
-  const hasFilters = !!(q || status || date);
+  // قيمة قديمة أو غلط في لينك محفوظ => من غير فلتر
+  const payment = PAYMENT_FILTERS.some((f) => f.value === params.get("pay")) ? params.get("pay") : "";
+  const hasFilters = !!(q || status || date || payment);
 
   // طريقة العرض: قائمة أو كانبان مع الحفظ في localStorage
   const [view, setView] = useState(() => {
@@ -89,7 +98,7 @@ export default function Orders() {
   // مسح التحديد عند تغيير الفلاتر أو طريقة العرض
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [q, status, date, view]);
+  }, [q, status, date, payment, view]);
 
   // الفلاتر في الـ URL عشان الريفريش والرجوع من صفحة التفاصيل يحافظوا عليها
   const setParam = (key, value) =>
@@ -110,7 +119,7 @@ export default function Orders() {
     refetchInterval: 30_000,
   });
 
-  const filtered = useMemo(() => filterOrders(orders, { q, status, date }), [orders, q, status, date]);
+  const filtered = useMemo(() => filterOrders(orders, { q, status, date, payment }), [orders, q, status, date, payment]);
 
   // طفرة التحديث الجماعي
   const bulkMutation = useMutation({
@@ -155,22 +164,30 @@ export default function Orders() {
 
   // عدد كل حالة (مع باقي الفلاتر) وعدد كل يوم (مع باقي الفلاتر)
   const statusOptions = useMemo(() => {
-    const base = filterOrders(orders, { q, date });
+    const base = filterOrders(orders, { q, date, payment });
     return [
       { value: "", label: "كل الحالات", count: base.length },
       ...Object.entries(ORDER_STATUS).map(([value, s]) => ({ value, label: s.label, count: base.filter((o) => o.status === value).length })),
     ];
-  }, [orders, q, date]);
+  }, [orders, q, date, payment]);
+
+  const paymentOptions = useMemo(() => {
+    const base = filterOrders(orders, { q, status, date });
+    return [
+      { value: "", label: "الكل", count: base.length },
+      ...PAYMENT_FILTERS.map((f) => ({ ...f, count: filterOrders(base, { payment: f.value }).length })),
+    ];
+  }, [orders, q, status, date]);
 
   const dayOptions = useMemo(() => {
-    const base = filterOrders(orders, { q, status });
+    const base = filterOrders(orders, { q, status, payment });
     const dates = new Set(orders.flatMap(orderDates));
     if (date) dates.add(date);
     return [
       { value: "", label: "كل الأيام" },
       ...[...dates].sort().map((d) => ({ value: d, label: formatDayLabel(d), count: base.filter((o) => o.items.some((it) => it.date === d)).length })),
     ];
-  }, [orders, q, status, date]);
+  }, [orders, q, status, date, payment]);
 
   const openOrder = (o) => navigate(`/admin/orders/${o.id}`, { state: { from: location.search } });
 
@@ -233,7 +250,12 @@ export default function Orders() {
       key: "total",
       header: "الإجمالي",
       className: "font-extrabold text-brand-red [overflow-wrap:anywhere]",
-      render: (o) => formatPrice(o.totalPrice),
+      render: (o) => (
+        <>
+          <span className="block">{formatPrice(o.totalPrice)}</span>
+          <PaymentChip order={o} className="mt-1" />
+        </>
+      ),
     },
     { key: "status", header: "الحالة", className: "w-px", render: (o) => <OrderStatusSelect order={o} className="min-w-[9rem]" /> },
   ];
@@ -324,6 +346,7 @@ export default function Orders() {
           </div>
           <FilterChips label="فلترة بالحالة" options={statusOptions} value={status} onChange={(v) => setParam("status", v)} />
           <FilterChips label="فلترة باليوم المطلوب" options={dayOptions} value={date} onChange={(v) => setParam("date", v)} />
+          <FilterChips label="فلترة بالدفع" options={paymentOptions} value={payment} onChange={(v) => setParam("pay", v)} />
 
           <div className="flex min-h-[44px] items-center justify-between gap-3">
             <p className="text-sm font-bold text-ink-soft">{filtered.length} طلب</p>
@@ -406,7 +429,10 @@ export default function Orders() {
                       <p className="truncate font-bold">{o.customer.name}</p>
                       <p dir="ltr" className="text-end text-sm text-ink-soft">{o.customer.phone}</p>
                     </div>
-                    <div className="mt-2"><DayPills order={o} /></div>
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <PaymentChip order={o} />
+                      <DayPills order={o} />
+                    </div>
                     <div className="mt-3 border-t border-ink/10 pt-3">
                       <OrderStatusSelect order={o} className="w-full" />
                     </div>

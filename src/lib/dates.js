@@ -51,13 +51,18 @@ const MINUTES = ["دقيقة", "دقيقتين", "دقائق", "دقيقة"];
  * - أقل من 24 ساعة: ساعات + دقايق => "يقفل بعد 5 ساعات و20 دقيقة"
  * - أقل من ساعة: دقايق بس. أقل من دقيقة: "يقفل بعد أقل من دقيقة"
  * الأرقام بتتقرّب لتحت (عمرنا ما نقول وقت أكتر من الحقيقي).
+ * shortMinutes (بيل كروت الأيام في الرئيسية بس): الدقايق "د" ومن غير "و" => "يقفل بعد 18 ساعة 5 د"
  */
-export function formatCountdown(ms) {
+export function formatCountdown(ms, { shortMinutes = false } = {}) {
   const totalMin = Math.floor(ms / 60000);
   if (totalMin < 1) return "يقفل بعد أقل من دقيقة";
   const days = Math.floor(totalMin / 1440);
   const hours = Math.floor((totalMin % 1440) / 60);
   const minutes = totalMin % 60;
+  if (days === 0 && shortMinutes) {
+    const parts = [hours > 0 && pluralAr(hours, HOURS), minutes > 0 && `${minutes}${NBSP}د`];
+    return `يقفل بعد ${parts.filter(Boolean).join(" ")}`;
+  }
   const parts = days > 0
     ? [pluralAr(days, DAYS), hours > 0 && pluralAr(hours, HOURS)]
     : [hours > 0 && pluralAr(hours, HOURS), minutes > 0 && pluralAr(minutes, MINUTES)];

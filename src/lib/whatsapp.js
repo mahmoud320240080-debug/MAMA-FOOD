@@ -5,6 +5,7 @@ import { formatPrice } from "@/lib/format";
 import { formatDayMonth } from "@/lib/dates";
 import { groupItemsByDate, lineTotal, cartSubtotal } from "@/lib/cart";
 import { WHATSAPP_NUMBER } from "@/api/config";
+import { PAYMENT_METHODS } from "@/lib/constants";
 
 /**
  * @param {Object} params
@@ -12,9 +13,10 @@ import { WHATSAPP_NUMBER } from "@/api/config";
  * @param {{ name: string, phone: string, address: string, notes?: string }} params.customer
  * @param {number} params.deliveryFee
  * @param {number} [params.orderNumber]
+ * @param {"cash"|"vodafone_cash"|"instapay"} [params.paymentMethod]
  * @returns {string} الرسالة المنسقة
  */
-export function buildWhatsAppMessage({ items = [], customer = {}, deliveryFee = 0, orderNumber }) {
+export function buildWhatsAppMessage({ items = [], customer = {}, deliveryFee = 0, orderNumber, paymentMethod }) {
   const lines = [];
   lines.push("🍽️ *طلب جديد من MAMA FOOD*");
   if (orderNumber) lines.push(`📋 رقم الطلب: *${orderNumber}*`);
@@ -42,6 +44,7 @@ export function buildWhatsAppMessage({ items = [], customer = {}, deliveryFee = 
   lines.push(`المجموع: ${formatPrice(sub)}`);
   lines.push(`التوصيل: ${formatPrice(deliveryFee)}`);
   lines.push(`*الإجمالي: ${formatPrice(sub + deliveryFee)}*`);
+  if (paymentMethod) lines.push(`طريقة الدفع: ${PAYMENT_METHODS[paymentMethod]?.label || PAYMENT_METHODS.cash.label}`);
   lines.push("");
   if (customer.name) lines.push(`👤 ${customer.name}`);
   if (customer.phone) lines.push(`📞 ${customer.phone}`);

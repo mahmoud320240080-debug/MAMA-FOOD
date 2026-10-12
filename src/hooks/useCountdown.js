@@ -5,14 +5,15 @@ import { formatCountdown } from "@/lib/dates";
  * عد تنازلي لوقت القفل. بيتحدث كل 30 ثانية، وكل ثانية في آخر دقيقتين
  * عشان "أقل من دقيقة" والقفل نفسه يظهروا في وقتهم.
  * @param {string} targetIso - ISO string لوقت القفل
+ * @param {{ shortMinutes?: boolean }} [options] - shortMinutes: الدقايق "د" (بيل كروت الأيام بس)
  * @returns {{ isExpired: boolean, label: string }}
  */
-export function useCountdown(targetIso) {
+export function useCountdown(targetIso, { shortMinutes = false } = {}) {
   const calc = useCallback(() => {
     const diff = new Date(targetIso).getTime() - Date.now();
     if (diff <= 0) return { diff, isExpired: true, label: "اتقفل" };
-    return { diff, isExpired: false, label: formatCountdown(diff) };
-  }, [targetIso]);
+    return { diff, isExpired: false, label: formatCountdown(diff, { shortMinutes }) };
+  }, [targetIso, shortMinutes]);
 
   const [state, setState] = useState(calc);
 

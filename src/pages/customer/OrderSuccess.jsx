@@ -7,9 +7,23 @@ import Skeleton from "@/components/common/Skeleton";
 import OrderSummary from "@/components/customer/OrderSummary";
 import { LogoIcon } from "@/components/common/Logo";
 import { whatsappUrl } from "@/lib/whatsapp";
-import { ORDER_STATUS } from "@/lib/constants";
-import { MessageCircle, PartyPopper } from "lucide-react";
+import { ORDER_STATUS, PAYMENT_METHODS } from "@/lib/constants";
+import { isElectronicPayment } from "@/lib/payments";
+import { PAYMENT_ICONS, PaymentStatusBadge } from "@/components/common/PaymentBadges";
+import { CircleCheckBig, MapPin, MessageCircle, Phone, StickyNote, User } from "lucide-react";
 import { BRAND_COLORS } from "@/lib/brandColors";
+
+/** سطر في بيانات التوصيل: أيقونة + كلام، كله على البداية (يمين في RTL) بنفس المسافة */
+function DetailRow({ icon: Icon, label, children }) {
+  return (
+    <li className="flex items-start gap-2.5">
+      {/* mt بسيط: الأيقونة (18px) في نص أول سطر (20px) حتى لو العنوان نزل سطرين */}
+      <Icon className="mt-px h-[18px] w-[18px] shrink-0 text-ink" aria-hidden />
+      <span className="sr-only">{label}: </span>
+      <span className="min-w-0 [overflow-wrap:anywhere]">{children}</span>
+    </li>
+  );
+}
 
 export default function OrderSuccess() {
   const { id } = useParams();
@@ -44,6 +58,7 @@ export default function OrderSuccess() {
       customer: order.customer,
       deliveryFee: order.deliveryFee,
       orderNumber: order.orderNumber,
+      paymentMethod: order.paymentMethod,
     });
   }, [order]);
 
@@ -69,18 +84,20 @@ export default function OrderSuccess() {
   }
 
   const statusInfo = ORDER_STATUS[order.status] || { label: order.status };
+  // التحويل: سطر الدفع في بيانات التوصيل (الصورة اترفعت مع الطلب). الكاش زي ما هو
+  const electronic = isElectronicPayment(order.paymentMethod);
 
   return (
     <div className="mx-auto max-w-lg px-4 py-10 text-center">
       {/* أيقونة النجاح واللوجو */}
       <div className="mx-auto mb-6 flex flex-col items-center gap-3">
         <LogoIcon tone="onLight" className="w-20" />
-        <div className="grid h-20 w-20 place-items-center rounded-full bg-brand-red shadow-pop">
-          <PartyPopper className="h-10 w-10 text-brand-yellow" aria-hidden />
+        <div className="grid h-20 w-20 place-items-center rounded-full bg-brand-red/10 ring-8 ring-brand-red/5">
+          <CircleCheckBig className="h-11 w-11 text-brand-red" aria-hidden />
         </div>
       </div>
 
-      <h1 className="text-3xl font-extrabold">تم تأكيد طلبك! 🎉</h1>
+      <h1 className="text-3xl font-extrabold">تم تأكيد طلبك!</h1>
       <p className="mt-2 text-lg text-ink-soft">شكراً ليك، طلبك رقم <strong>#{order.orderNumber}</strong> وصلنا.</p>
 
       {/* الحالة */}
@@ -95,11 +112,22 @@ export default function OrderSuccess() {
 
       {/* بيانات العميل */}
       <div className="mt-4 rounded-3xl bg-white p-5 text-start shadow-soft">
-        <h3 className="mb-2 font-bold">بيانات التوصيل</h3>
-        <p className="text-sm text-ink-soft">👤 {order.customer.name}</p>
-        <p className="text-sm text-ink-soft" dir="ltr">📞 {order.customer.phone}</p>
-        <p className="text-sm text-ink-soft">📍 {order.customer.address}</p>
-        {order.customer.notes && <p className="text-sm text-ink-soft">📝 {order.customer.notes}</p>}
+        <h3 className="mb-3 font-bold">بيانات التوصيل</h3>
+        <ul className="space-y-2.5 text-sm text-ink-soft">
+          <DetailRow icon={User} label="الاسم">{order.customer.name}</DetailRow>
+          {/* الأرقام بترتيبها LTR جوه <bdi>، والسطر نفسه على البداية زي الباقي */}
+          <DetailRow icon={Phone} label="الموبايل"><bdi dir="ltr">{order.customer.phone}</bdi></DetailRow>
+          <DetailRow icon={MapPin} label="العنوان">{order.customer.address}</DetailRow>
+          {order.customer.notes && <DetailRow icon={StickyNote} label="ملاحظات">{order.customer.notes}</DetailRow>}
+          {electronic && (
+            <DetailRow icon={PAYMENT_ICONS[order.paymentMethod]} label="الدفع">
+              <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+                {PAYMENT_METHODS[order.paymentMethod].label}
+                <PaymentStatusBadge status={order.payment.status} short className="px-2.5 py-0.5" />
+              </span>
+            </DetailRow>
+          )}
+        </ul>
       </div>
 
       {/* أزرار */}

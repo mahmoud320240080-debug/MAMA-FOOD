@@ -5,6 +5,7 @@ import { m } from "framer-motion";
 import { ChevronsLeft, ChevronsRight, ClipboardList, LogOut, Search, UtensilsCrossed, X } from "lucide-react";
 import Overlay from "@/components/common/Overlay";
 import OrderStatusBadge from "@/components/admin/OrderStatusBadge";
+import { PaymentChip } from "@/components/common/PaymentBadges";
 import { ADMIN_PAGES } from "@/components/admin/adminNav";
 import { mealsApi, ordersApi } from "@/api";
 import { useAdminStore } from "@/store/useAdminStore";
@@ -102,6 +103,7 @@ export default function CommandPalette({ open, onOpenChange }) {
             end: (
               <span className="flex shrink-0 items-center gap-2">
                 <OrderStatusBadge status={o.status} />
+                <PaymentChip order={o} className="hidden sm:inline-flex" />
                 <span className="hidden whitespace-nowrap text-sm font-bold text-ink sm:inline">{formatPrice(o.totalPrice)}</span>
               </span>
             ),

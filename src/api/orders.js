@@ -4,8 +4,41 @@ import { db, simulate, uid } from "./mockDb";
 import { readSettings } from "./menu";
 import { canChangeOrderStatus } from "@/lib/constants";
 import { formatDayLabel, getLockedDates, withLam } from "@/lib/dates";
+import {
+  availablePaymentMethods, defaultPayment, isElectronicPayment, validateProofFile,
+} from "@/lib/payments";
+import { blobToDataUrl, compressImage } from "@/lib/image";
 
-const read = () => db.read("orders", []);
+/** طلب قديم من قبل طرق الدفع => كاش ومش محتاج دفع (والحقول الناقصة بقيمها الافتراضية) */
+/**
+ * ترحيل البيانات المتخزنة من النسخ القديمة (مراجعة الدفع، ورفع الإيصال بعد الطلب — الاتنين اتشالوا):
+ * pending_review => confirmed (الإيصال كان وصل). rejected و awaiting_proof => confirmed من غير صورة متسجلة
+ * (طريقة الدفع زي ما هي، ومفيش خطوة تانية مطلوبة من حد؛ الأدمن بيشوف إن مفيش صورة في تفاصيل الطلب).
+ * حقول المراجعة القديمة (rejectReason/rejectNote/reviewedAt/attempts) بتتشال.
+ */
+const MIGRATED_PAYMENT_STATUS = { pending_review: "confirmed", rejected: "confirmed", awaiting_proof: "confirmed" };
+
+export const normalizeOrder = (o) => {
+  const paymentMethod = o.paymentMethod || "cash";
+  const stored = { ...defaultPayment(paymentMethod), ...o.payment };
+  const status = MIGRATED_PAYMENT_STATUS[stored.status] || stored.status;
+  const proofUploadedAt = stored.status === "rejected" ? null : stored.proofUploadedAt ?? null;
+  return { ...o, paymentMethod, payment: { status, proofUploadedAt } };
+};
+
+const read = () => db.read("orders", []).map(normalizeOrder);
+
+/**
+ * صور الإيصالات في مفتاح لوحدها (مش جوه الطلبات اللي بتتقري في كل طلب API):
+ * { [orderId]: { src: dataURL, size, uploadedAt } } — بتتحمّل بس في صفحة التفاصيل.
+ */
+const readProofs = () => db.read("paymentProofs", {});
+
+/** امتلاء localStorage => رسالة واضحة بدل خطأ المتصفح */
+const storageError = (e) =>
+  e?.name === "QuotaExceededError" || e?.code === 22
+    ? new Error("مساحة التخزين في المتصفح اتملت ومقدرناش نحفظ الصورة. جرّب صورة أصغر أو كلّمنا على واتساب.")
+    : e;
 
 /** بيشيل الفلاتر الفاضية عشان ما تتبعتش "undefined" في الـ query string */
 const cleanParams = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== ""));
@@ -23,15 +56,20 @@ export const calcOrderTotal = (items, deliveryFee = 0) => {
 /** الأيام المطلوبة في الطلب (مش يوم إنشاء الطلب) — مترتبة */
 export const orderDates = (order) => [...new Set(order.items.map((it) => it.date))].sort();
 
+/** فلتر الدفع: "cash" = طلبات الكاش، غير كده = حالة دفع طلب إلكتروني */
+const matchesPayment = (o, payment) =>
+  payment === "cash" ? !isElectronicPayment(o.paymentMethod) : isElectronicPayment(o.paymentMethod) && o.payment?.status === payment;
+
 /**
- * فلترة الطلبات (نفس منطق GET /admin/orders?q=&status=&date= على الباك)
- * q: رقم الطلب أو اسم العميل أو الموبايل | date: أي طلب فيه صنف لليوم ده
+ * فلترة الطلبات (نفس منطق GET /admin/orders?q=&status=&date=&payment= على الباك)
+ * q: رقم الطلب أو اسم العميل أو الموبايل | date: أي طلب فيه صنف لليوم ده | payment: cash أو حالة دفع
  * النتيجة: الأحدث الأول
  */
-export const filterOrders = (orders, { q, status, date } = {}) => {
+export const filterOrders = (orders, { q, status, date, payment } = {}) => {
   const term = q?.trim().toLowerCase().replace(/^#/, "");
   return orders
     .filter((o) => !status || o.status === status)
+    .filter((o) => !payment || matchesPayment(o, payment))
     .filter((o) => !date || o.items.some((it) => it.date === date))
     .filter((o) => !term
       || String(o.orderNumber).includes(term)
@@ -75,31 +113,76 @@ export const buildPrepSummary = (orders, date) => {
 };
 
 export const ordersApi = {
-  create: (payload) =>
-    USE_MOCK
-      ? simulate(() => {
-          const orders = read();
-          const settings = readSettings();
-          // الباك لازم يرفض أي وجبة ليوم اتقفل (نفس قاعدة القفل بالظبط)
-          const locked = getLockedDates(payload.items.map((it) => it.date), settings);
-          if (locked.length) {
-            throw new Error(`الطلب ${locked.map((d) => withLam(formatDayLabel(d))).join("، ")} اتقفل. شيل وجبات اليوم ده من السلة وكمّل.`);
-          }
-          // رسوم التوصيل من الإعدادات (زي الباك) مش من اللي الفرونت باعته
-          const { subtotal, deliveryFee, total } = calcOrderTotal(payload.items, settings.deliveryFee ?? 0);
-          const order = {
-            id: uid("o"),
-            orderNumber: 1001 + orders.length,
-            status: "new",
-            createdAt: new Date().toISOString(),
-            customer: payload.customer,
-            items: payload.items,
-            subtotal, deliveryFee, totalPrice: total,
-          };
-          db.write("orders", [order, ...orders]);
-          return order;
-        }, 500)
-      : http("/orders", { method: "POST", body: payload }),
+  /**
+   * إنشاء طلب: POST /orders.
+   * التحويل (فودافون كاش/إنستاباي): صورة التحويل إجبارية وبتتبعت مع الطلب في نفس الريكوست
+   * (multipart: الحقل "order" فيه الطلب JSON والحقل "proof" الصورة) => الطلب بيتعمل والدفع "confirmed"، وعمره ما يتعمل من غير صورته.
+   * التحقق (النوع والحجم) قبل الضغط، والضغط في المتصفح (1280px، JPEG 0.75) قبل الرفع.
+   * الموك: الصورة في paymentProofs والطلب في orders — والاتنين يا يتحفظوا يا لأ.
+   */
+  create: async (payload, proofFile) => {
+    let blob = null;
+    if (isElectronicPayment(payload.paymentMethod)) {
+      if (!proofFile) throw new Error("ارفع صورة التحويل عشان تكمّل");
+      const fileError = validateProofFile(proofFile);
+      if (fileError) throw new Error(fileError);
+      blob = await compressImage(proofFile);
+    }
+    if (!USE_MOCK) {
+      if (!blob) return http("/orders", { method: "POST", body: payload });
+      const form = new FormData();
+      form.append("order", JSON.stringify(payload));
+      form.append("proof", blob, "payment-proof.jpg");
+      return http("/orders", { method: "POST", body: form });
+    }
+    const src = blob ? await blobToDataUrl(blob) : null;
+    return simulate(() => {
+      const orders = read();
+      const settings = readSettings();
+      // الباك لازم يرفض أي وجبة ليوم اتقفل (نفس قاعدة القفل بالظبط)
+      const locked = getLockedDates(payload.items.map((it) => it.date), settings);
+      if (locked.length) {
+        throw new Error(`الطلب ${locked.map((d) => withLam(formatDayLabel(d))).join("، ")} اتقفل. شيل وجبات اليوم ده من السلة وكمّل.`);
+      }
+      // طريقة الدفع لازم تكون متاحة في الإعدادات دلوقتي (الأدمن ممكن يكون قفلها)
+      const paymentMethod = payload.paymentMethod || "cash";
+      if (!availablePaymentMethods(settings).includes(paymentMethod)) {
+        throw new Error("طريقة الدفع دي مش متاحة دلوقتي. اختار طريقة تانية وأكّد الطلب.");
+      }
+      // رسوم التوصيل من الإعدادات (زي الباك) مش من اللي الفرونت باعته
+      const { subtotal, deliveryFee, total } = calcOrderTotal(payload.items, settings.deliveryFee ?? 0);
+      const createdAt = new Date().toISOString();
+      const order = {
+        id: uid("o"),
+        orderNumber: 1001 + orders.length,
+        status: "new",
+        createdAt,
+        customer: payload.customer,
+        items: payload.items,
+        subtotal, deliveryFee, totalPrice: total,
+        paymentMethod,
+        payment: src ? { status: "confirmed", proofUploadedAt: createdAt } : defaultPayment(paymentMethod),
+      };
+      if (!src) {
+        db.write("orders", [order, ...orders]);
+        return order;
+      }
+      let proofs;
+      try {
+        proofs = readProofs(); // أول مرة بيكتب {} فاضية => جوه الـ try برضه
+        db.write("paymentProofs", { ...proofs, [order.id]: { src, size: blob.size, uploadedAt: createdAt } });
+      } catch (e) {
+        throw storageError(e);
+      }
+      try {
+        db.write("orders", [order, ...orders]);
+      } catch (e) {
+        db.write("paymentProofs", proofs); // رجوع: ما نسيبش صورة من غير طلب
+        throw storageError(e);
+      }
+      return order;
+    }, 500);
+  },
 
   /** filters: { q?, status?, date? } */
   list: (filters = {}) =>
@@ -158,4 +241,10 @@ export const ordersApi = {
     USE_MOCK
       ? simulate(() => buildPrepSummary(read(), date))
       : http("/admin/orders/prep", { params: { date } }),
+
+  /** صورة الإيصال للأدمن: GET /admin/orders/:id/payment-proof => { src, size, uploadedAt } أو null */
+  getPaymentProof: (orderId) =>
+    USE_MOCK
+      ? simulate(() => readProofs()[orderId] || null)
+      : http(`/admin/orders/${orderId}/payment-proof`),
 };

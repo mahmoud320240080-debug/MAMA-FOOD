@@ -20,6 +20,8 @@ export const useCartStore = create(
       customer: { name: "", phone: "", address: "", notes: "" },
       /** @type {CartItem|null} */
       _lastRemoved: null,
+      /** آخر طريقة دفع اختارها الزبون (بتتحفظ بعد الطلب زي بياناته) */
+      paymentMethod: "cash",
 
       // — أيام —
       toggleDate: (date) => {
@@ -97,6 +99,7 @@ export const useCartStore = create(
       clearCart: () => set({ selectedDates: [], items: [], _lastRemoved: null }),
 
       saveCustomer: (c) => set({ customer: { ...get().customer, ...c } }),
+      savePaymentMethod: (paymentMethod) => set({ paymentMethod }),
 
       /**
        * إزالة العناصر اللي يومها اتقفل أو مش في الأيام الجاية.
@@ -125,6 +128,7 @@ export const useCartStore = create(
         selectedDates: state.selectedDates,
         items: state.items,
         customer: state.customer,
+        paymentMethod: state.paymentMethod,
       }),
     }
   )

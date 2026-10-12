@@ -8,6 +8,7 @@ export const loadCheckout = () => import("@/pages/customer/Checkout");
 
 export const Checkout = lazy(loadCheckout);
 export const OrderSuccess = lazy(() => import("@/pages/customer/OrderSuccess"));
+export const Payment = lazy(() => import("@/pages/customer/Payment"));
 export const NotFound = lazy(() => import("@/pages/customer/NotFound"));
 
 export const AdminLayout = lazy(() => import("@/layouts/AdminLayout"));

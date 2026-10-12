@@ -7,17 +7,21 @@ export const tokenStorage = {
   clear: () => localStorage.removeItem(TOKEN_KEY),
 };
 
-/** عميل HTTP بسيط للباك الحقيقي. بيتستخدم بس لما USE_MOCK = false */
+/**
+ * عميل HTTP بسيط للباك الحقيقي. بيتستخدم بس لما USE_MOCK = false
+ * body ممكن يكون FormData (رفع ملفات multipart): ساعتها المتصفح بيحط الـ Content-Type والـ boundary بنفسه.
+ */
 export async function http(path, { method = "GET", body, params } = {}) {
   const qs = params ? "?" + new URLSearchParams(params).toString() : "";
   const token = tokenStorage.get();
+  const isForm = typeof FormData !== "undefined" && body instanceof FormData;
   const res = await fetch(`${API_URL}${path}${qs}`, {
     method,
     headers: {
-      "Content-Type": "application/json",
+      ...(isForm ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: body ? JSON.stringify(body) : undefined,
+    body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) {

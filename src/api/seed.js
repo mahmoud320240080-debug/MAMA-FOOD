@@ -36,6 +36,12 @@ export const seedSettings = () => ({
   cutoffMode: "same_day", // كل يوم بيتقفل في نفس اليوم...
   orderCutoffHour: 12, // ...الساعة 12 الضهر
   deliveryFee: 20,
+  // الدفع الإلكتروني مقفول لحد ما صاحب الأكل يحط رقمه من الإعدادات (الكاش متاح دايماً)
+  payments: {
+    vodafoneCash: { enabled: false, number: "", accountName: "" },
+    instapay: { enabled: false, handle: "", accountName: "" },
+    instructions: "",
+  },
 });
 
 export const DEMO_ADMIN = { email: "admin@mamafood.com", password: "admin123" }; // ديمو فقط

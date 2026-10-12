@@ -1,23 +1,40 @@
+import { forwardRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Clock, Save, Truck } from "lucide-react";
+import { ChevronDown, Clock, Save, Truck, Wallet } from "lucide-react";
 import { menuApi } from "@/api";
 import Button from "@/components/common/Button";
 import Input from "@/components/common/Input";
 import Skeleton from "@/components/common/Skeleton";
 import { PageError } from "@/components/admin/PageState";
+import { PAYMENT_ICONS } from "@/components/common/PaymentBadges";
 import { formatHour, formatHourPhrase, formatPrice } from "@/lib/format";
 import { getDayLockTime, getUpcomingDates } from "@/lib/dates";
 import { CUTOFF_MODES, DAY_KEYS, DAY_NAMES_AR } from "@/lib/constants";
+import { validatePaymentSettings } from "@/lib/payments";
 import { cn } from "@/lib/cn";
 import { toast } from "@/store/useToastStore";
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 const hourLabel = (h) => (h === 0 ? "12 ص (نص الليل)" : h === 12 ? "12 م (الضهر)" : formatHour(h));
 
+// نفس تحقق الـ API (validatePaymentSettings): الطريقة المفعّلة لازم رقمها/عنوانها يبقى صح
+const paymentsSchema = z
+  .object({
+    vodafoneCash: z.object({ enabled: z.boolean(), number: z.string().trim(), accountName: z.string().trim() }),
+    instapay: z.object({ enabled: z.boolean(), handle: z.string().trim(), accountName: z.string().trim() }),
+    instructions: z.string().trim().max(500, "التعليمات طويلة (500 حرف بالكتير)"),
+  })
+  .superRefine((payments, ctx) => {
+    const errors = validatePaymentSettings(payments);
+    if (errors.vodafoneCash) ctx.addIssue({ code: "custom", path: ["vodafoneCash", "number"], message: errors.vodafoneCash });
+    if (errors.instapay) ctx.addIssue({ code: "custom", path: ["instapay", "handle"], message: errors.instapay });
+  });
+
 const schema = z.object({
+  payments: paymentsSchema,
   cutoffMode: z.enum(["same_day", "day_before"]),
   orderCutoffHour: z.number().int().min(0).max(23),
   deliveryFee: z.preprocess(
@@ -27,6 +44,36 @@ const schema = z.object({
 });
 
 const card = "rounded-3xl bg-white p-5 text-ink shadow-soft md:p-6";
+
+const formValues = (s) => ({
+  cutoffMode: s.cutoffMode,
+  orderCutoffHour: s.orderCutoffHour,
+  deliveryFee: String(s.deliveryFee),
+  payments: s.payments,
+});
+
+/** مفتاح تشغيل (checkbox حقيقي بـ role="switch"، والسطر كله بيتضغط و ارتفاعه 48px) */
+const Switch = forwardRef(function Switch({ label, ...props }, ref) {
+  return (
+    <label className="flex min-h-[48px] cursor-pointer items-center justify-between gap-3">
+      <span className="text-sm font-bold">{label}</span>
+      <input ref={ref} type="checkbox" role="switch" className="peer sr-only" {...props} />
+      <span
+        aria-hidden
+        className={cn(
+          "relative inline-block h-7 w-12 shrink-0 rounded-full bg-ink/20 transition-colors peer-checked:bg-brand-red",
+          "peer-focus-visible:ring-2 peer-focus-visible:ring-brand-red peer-focus-visible:ring-offset-2",
+          "after:absolute after:start-1 after:top-1 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform",
+          "peer-checked:after:translate-x-5 rtl:peer-checked:after:-translate-x-5"
+        )}
+      />
+    </label>
+  );
+});
+
+/** "الزبون هيشوف: ..." للطريقة المفعّلة اللي ليها رقم، بالأرقام في اتجاهها (LTR) والسطر على البداية */
+const customerSees = (enabled, value) =>
+  enabled && value?.trim() ? <>الزبون هيشوف: <bdi dir="ltr">{value.trim()}</bdi></> : undefined;
 
 function SettingsForm({ settings }) {
   const queryClient = useQueryClient();
@@ -38,8 +85,10 @@ function SettingsForm({ settings }) {
     formState: { errors, isDirty },
   } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { cutoffMode: settings.cutoffMode, orderCutoffHour: settings.orderCutoffHour, deliveryFee: String(settings.deliveryFee) },
+    defaultValues: formValues(settings),
   });
+  const vodafone = watch("payments.vodafoneCash");
+  const instapay = watch("payments.instapay");
 
   const cutoffMode = watch("cutoffMode");
   const cutoffHour = Number(watch("orderCutoffHour"));
@@ -57,7 +106,7 @@ function SettingsForm({ settings }) {
       queryClient.setQueryData(["settings"], saved);
       // قفل الأيام عند الزبون بيتحسب من الإعدادات
       queryClient.invalidateQueries({ queryKey: ["upcoming"] });
-      reset({ cutoffMode: saved.cutoffMode, orderCutoffHour: saved.orderCutoffHour, deliveryFee: String(saved.deliveryFee) });
+      reset(formValues(saved));
       toast.success("تم حفظ الإعدادات");
     },
     onError: (e) => toast.error(e.message || "حصلت مشكلة أثناء الحفظ"),
@@ -134,6 +183,83 @@ function SettingsForm({ settings }) {
         />
       </section>
 
+      <section className={card}>
+        <h2 className="mb-1 flex items-center gap-2 text-lg font-extrabold">
+          <Wallet className="h-5 w-5 shrink-0 text-brand-red" aria-hidden />
+          طرق الدفع
+        </h2>
+        <p className="mb-4 text-sm text-ink-soft">الزبون بيشوف بس الطرق المفعّلة واللي رقمها مكتوب صح. التحويل بيتأكد بصورة إيصال بتراجعها من صفحة الطلب.</p>
+
+        <div className="space-y-4">
+          <div className="flex min-h-[48px] items-center gap-3 rounded-2xl bg-cream px-4 py-2">
+            <PAYMENT_ICONS.cash className="h-5 w-5 shrink-0 text-ink" aria-hidden />
+            <p className="min-w-0 flex-1 text-sm font-bold">كاش عند الاستلام</p>
+            <span className="shrink-0 text-xs font-semibold text-ink-soft">متاح دايماً</span>
+          </div>
+
+          <fieldset className="rounded-2xl border-2 border-ink/10 p-4">
+            <legend className="flex items-center gap-2 px-1 text-sm font-extrabold">
+              <PAYMENT_ICONS.vodafone_cash className="h-[18px] w-[18px] shrink-0 text-brand-red" aria-hidden />
+              فودافون كاش
+            </legend>
+            <Switch label="تفعيل فودافون كاش" {...register("payments.vodafoneCash.enabled")} />
+            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+              <Input
+                label="رقم المحفظة"
+                inputMode="tel"
+                dir="ltr"
+                autoComplete="off"
+                placeholder="01XXXXXXXXX"
+                error={errors.payments?.vodafoneCash?.number?.message}
+                hint={customerSees(vodafone?.enabled, vodafone?.number)}
+                {...register("payments.vodafoneCash.number")}
+              />
+              <Input
+                label="اسم صاحب المحفظة (اختياري)"
+                autoComplete="off"
+                {...register("payments.vodafoneCash.accountName")}
+              />
+            </div>
+          </fieldset>
+
+          <fieldset className="rounded-2xl border-2 border-ink/10 p-4">
+            <legend className="flex items-center gap-2 px-1 text-sm font-extrabold">
+              <PAYMENT_ICONS.instapay className="h-[18px] w-[18px] shrink-0 text-brand-red" aria-hidden />
+              إنستاباي
+            </legend>
+            <Switch label="تفعيل إنستاباي" {...register("payments.instapay.enabled")} />
+            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+              <Input
+                label="رقم أو عنوان إنستاباي"
+                dir="ltr"
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                placeholder="01XXXXXXXXX أو name@instapay"
+                error={errors.payments?.instapay?.handle?.message}
+                hint={customerSees(instapay?.enabled, instapay?.handle)}
+                {...register("payments.instapay.handle")}
+              />
+              <Input
+                label="اسم صاحب الحساب (اختياري)"
+                autoComplete="off"
+                {...register("payments.instapay.accountName")}
+              />
+            </div>
+          </fieldset>
+
+          <Input
+            as="textarea"
+            label="تعليمات للزبون (اختياري)"
+            placeholder="مثال: اكتب رقم الطلب في ملاحظة التحويل"
+            maxLength={500}
+            error={errors.payments?.instructions?.message}
+            hint="بتظهر للزبون في صفحة التحويل."
+            {...register("payments.instructions")}
+          />
+        </div>
+      </section>
+
       <div className="flex flex-col-reverse gap-3 pb-safe sm:flex-row sm:items-center">
         <Button type="submit" loading={mutation.isPending} disabled={!isDirty} className="w-full sm:w-auto">
           <Save className="h-5 w-5" aria-hidden />
@@ -155,13 +281,14 @@ export default function Settings() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-extrabold md:text-3xl">الإعدادات</h1>
-        <p className="mt-1 text-sm text-ink-soft">ميعاد قفل الطلبات ورسوم التوصيل — بيتطبقوا على صفحة الزبون على طول.</p>
+        <p className="mt-1 text-sm text-ink-soft">ميعاد قفل الطلبات ورسوم التوصيل وطرق الدفع — بيتطبقوا على صفحة الزبون على طول.</p>
       </div>
 
       {isLoading ? (
         <div className="max-w-2xl space-y-5" aria-busy="true">
           <Skeleton className="h-56 rounded-3xl" />
           <Skeleton className="h-40 rounded-3xl" />
+          <Skeleton className="h-72 rounded-3xl" />
           <Skeleton className="h-12 w-44 rounded-full" />
         </div>
       ) : isError ? (

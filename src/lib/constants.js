@@ -34,3 +34,19 @@ export const UPCOMING_DAYS_COUNT = 7; // 7 أيام تبدأ من بكره (وا
 /** وضع قفل الطلبات (settings.cutoffMode) — الحساب نفسه في getDayLockTime */
 export const CUTOFF_MODES = { same_day: "نفس اليوم", day_before: "اليوم اللي قبله" };
 export const PHONE_REGEX = /^01[0125][0-9]{8}$/; // موبايل مصري
+
+/** طرق الدفع (order.paymentMethod). short = نسخة مختصرة للشرايح الصغيرة */
+export const PAYMENT_METHODS = {
+  cash: { label: "كاش عند الاستلام", short: "كاش" },
+  vodafone_cash: { label: "فودافون كاش", short: "فودافون كاش" },
+  instapay: { label: "إنستاباي", short: "إنستاباي" },
+};
+
+/**
+ * حالة الدفع (order.payment.status). badge على نفس نظام ORDER_STATUS (ممنوع أصفر على فاتح: الأصفر خلفية والكلام بني)
+ * not_required محايد (كاش) · confirmed = الإيصال وصل مع الطلب (مفيش مراجعة من الأدمن)
+ */
+export const PAYMENT_STATUS = {
+  not_required: { label: "كاش عند الاستلام", short: "كاش", badge: "bg-ink/10 text-ink" },
+  confirmed: { label: "وصل الإيصال", short: "وصل الإيصال", badge: "bg-green-100 text-green-800" },
+};

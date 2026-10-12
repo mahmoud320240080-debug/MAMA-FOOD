@@ -5,7 +5,7 @@ import ProtectedRoute from "./ProtectedRoute";
 import Home from "@/pages/customer/Home";
 import PageLoader from "@/components/common/PageLoader";
 import {
-  AdminLayout, Addons, Checkout, Dashboard, Login, Meals, Menu, NotFound, OrderDetails, OrderSuccess, Orders, Settings,
+  AdminLayout, Addons, Checkout, Dashboard, Login, Meals, Menu, NotFound, OrderDetails, OrderSuccess, Orders, Payment, Settings,
 } from "./pages";
 
 export default function AppRoutes() {
@@ -17,6 +17,7 @@ export default function AppRoutes() {
           <Route path="/" element={<Home />} />
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/order-success/:id" element={<OrderSuccess />} />
+          <Route path="/payment/:orderId" element={<Payment />} />
           <Route path="*" element={<NotFound />} />
         </Route>
 

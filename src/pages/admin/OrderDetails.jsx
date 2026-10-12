@@ -7,6 +7,8 @@ import Skeleton from "@/components/common/Skeleton";
 import Reveal from "@/components/common/Reveal";
 import OrderStatusSelect from "@/components/admin/OrderStatusSelect";
 import OrderStatusBadge from "@/components/admin/OrderStatusBadge";
+import PaymentCard from "@/components/admin/PaymentCard";
+import { PaymentStatusBadge } from "@/components/common/PaymentBadges";
 import { PageError } from "@/components/admin/PageState";
 import { groupItemsByDate, lineTotal, daySubtotal } from "@/lib/cart";
 import { formatDayLabel } from "@/lib/dates";
@@ -95,6 +97,7 @@ export default function OrderDetails() {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-extrabold md:text-3xl">طلب #{order.orderNumber}</h1>
             <OrderStatusBadge status={order.status} />
+            <PaymentStatusBadge status={order.payment?.status} short />
           </div>
           <p className="mt-1 text-sm text-ink-soft">اتعمل {formatDateTime(order.createdAt)}</p>
         </div>
@@ -178,8 +181,9 @@ export default function OrderDetails() {
               <hr className="border-ink/10" />
               <SummaryRow label="الإجمالي" value={formatPrice(order.totalPrice)} strong />
             </div>
-            <p className="mt-3 text-xs text-ink-soft">💵 الدفع عند الاستلام</p>
           </section>
+
+          <PaymentCard order={order} />
         </div>
       </div>
     </div>

@@ -4,17 +4,17 @@ import { Clock, Lock } from "lucide-react";
 
 /**
  * بادج العد التنازلي لقفل اليوم
- * block: بعرض الكارت كله (كروت الأيام الضيقة): النص بيتقسم على سطرين متوازنين،
- * وفي صف الـ 8 كروت (xl) الأيقونة بتستخبى عشان الكلام ياخد المساحة
+ * block: بعرض الكارت كله (كروت الأيام الضيقة): متسنتر وبارتفاع ثابت، والنص بيتقسم على سطرين متوازنين،
+ * والأيقونة بتستخبى عشان الكلام ياخد عرض الكارت كله ومايعديش سطرين
  */
-export default function CountdownBadge({ closesAt, block = false, className }) {
-  const { isExpired, label } = useCountdown(closesAt);
+export default function CountdownBadge({ closesAt, block = false, shortMinutes = false, className }) {
+  const { isExpired, label } = useCountdown(closesAt, { shortMinutes });
 
   return (
     <span
       className={cn(
         "items-center gap-1.5 text-xs font-semibold",
-        block ? "flex w-full rounded-2xl px-2.5 py-1.5 xl:px-2 xl:[&>svg]:hidden" : "inline-flex rounded-full px-3 py-1",
+        block ? "flex min-h-12 w-full justify-center rounded-2xl px-2 py-2 text-center leading-4 xl:px-1 [&>svg]:hidden" : "inline-flex rounded-full px-3 py-1",
         isExpired
           ? "bg-ink/10 text-ink-soft"
           : "bg-brand-yellow-soft text-ink",
